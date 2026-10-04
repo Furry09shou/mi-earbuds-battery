@@ -24,26 +24,36 @@ public static class AudioEndpointProbe
         if (string.IsNullOrWhiteSpace(deviceName)) return false;
         try
         {
-            using var root = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-            using var render = root.OpenSubKey(RenderKey);
-            if (render is null) return false;
-
-            foreach (var id in render.GetSubKeyNames())
-            {
-                using var ep = render.OpenSubKey(id);
-                if (ep is null) continue;
-                if ((ep.GetValue("DeviceState") as int?) != 1) continue;   // 1 = Active
-
-                using var props = ep.OpenSubKey("Properties");
-                if (props is null) continue;
-                var name = (props.GetValue(InterfaceNameValue) as string)
-                        ?? (props.GetValue(DeviceNameValue) as string);
-                if (name is not null &&
-                    name.Contains(deviceName, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
+            return ListActiveEndpointNames()
+                .Any(n => n.Contains(deviceName, StringComparison.OrdinalIgnoreCase));
         }
         catch { /* 读取失败按未连接处理 */ }
         return false;
+    }
+
+    /// <summary>
+    /// 列出所有活动（DeviceState=1）渲染端点的友好名。
+    /// 用于设备列表：配对蓝牙音频 ∩ 活动端点 = 当前连接的耳机。
+    /// </summary>
+    public static List<string> ListActiveEndpointNames()
+    {
+        var names = new List<string>();
+        using var root = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        using var render = root.OpenSubKey(RenderKey);
+        if (render is null) return names;
+
+        foreach (var id in render.GetSubKeyNames())
+        {
+            using var ep = render.OpenSubKey(id);
+            if (ep is null) continue;
+            if ((ep.GetValue("DeviceState") as int?) != 1) continue;   // 1 = Active
+
+            using var props = ep.OpenSubKey("Properties");
+            if (props is null) continue;
+            var name = (props.GetValue(InterfaceNameValue) as string)
+                    ?? (props.GetValue(DeviceNameValue) as string);
+            if (!string.IsNullOrWhiteSpace(name)) names.Add(name);
+        }
+        return names;
     }
 }

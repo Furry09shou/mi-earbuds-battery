@@ -15,6 +15,7 @@ namespace RonghuiEarbuds.App;
 public partial class MainWindow : Window
 {
     private readonly EarbudsWatcher _watcher;
+    private readonly AppConfig _config;
     private readonly Action<EarbudsUpdate>? _onUpdateApplied;
     private readonly Action<bool>? _onAliveChanged;
     private readonly DispatcherTimer _aliveTimer;
@@ -22,9 +23,12 @@ public partial class MainWindow : Window
 
     private bool _initialized;
 
-    // 多设备：MAC → 观测状态（本会话内出现过的所有已识别设备）
+    // 多设备：MAC → 观测状态（本会话内出现过的所有设备 + 配置里持久化的设备名单）
     private readonly Dictionary<string, DeviceState> _devices = new(StringComparer.OrdinalIgnoreCase);
+    // 已持久化到配置的设备（切换列表常驻显示，不受 10 分钟窗口限制）
+    private readonly HashSet<string> _knownMacs = new(StringComparer.OrdinalIgnoreCase);
     private DeviceState? _active;
+    private int _probeTick;
 
     /// <summary>当前面板正在显示的设备 MAC（托盘提示只对该设备弹出）。</summary>
     public string? ActiveMac => _active?.Mac;
@@ -33,7 +37,10 @@ public partial class MainWindow : Window
     private UpdateInfo? _updateInfo;
 
     private const double StaleAfterSeconds = 8;
-    // 设备切换列表只显示 10 分钟内见过的设备（避免路人耳机长期滞留）
+    // 卡片显示的实时窗口：广播停 3 秒内数据即过期回「--」（用户要求不挂旧值）；
+    // 设备级断连判定仍用 8 秒（容忍广播间隔，避免误判断连）
+    private const double ChannelFreshSeconds = 3;
+    // 未入名单的临时设备（信号弱的路人耳机）在切换列表只保留 10 分钟
     private static readonly TimeSpan DeviceListWindow = TimeSpan.FromMinutes(10);
     private const int JumpThreshold = 25;
     private static readonly TimeSpan JumpWindow = TimeSpan.FromSeconds(3);
@@ -43,13 +50,21 @@ public partial class MainWindow : Window
     private static readonly Color LowColor = Color.FromRgb(0xD9, 0x6A, 0x5B);
     private static readonly Color UnknownColor = Color.FromRgb(0x4A, 0x4A, 0x52);
 
-    /// <summary>单台设备本会话内的观测状态。</summary>
+    /// <summary>单台设备的观测状态。</summary>
     private sealed class DeviceState
     {
         public required string Mac { get; init; }
         public string Name = "";
         public DateTime LastSeen = DateTime.MinValue;
+        /// <summary>最后一次收到有效广播的时间（连接心跳不刷新此值，两者语义不同）。</summary>
+        public DateTime BroadcastSeen = DateTime.MinValue;
         public int? Rssi;
+
+        /// <summary>false = 广播格式未适配（系统连接枚举发现，只有在线状态无电量）。</summary>
+        public bool IsAdapted = true;
+
+        /// <summary>广播暂停时的兜底读数：系统级 HFP/AVRCP 电量（蓝牙设置页同源）。</summary>
+        public int? SystemBattery;
 
         // 抖动抑制：充电触点瞬态会造成个别字段跳变，跳变过大时先压住
         public (int Value, DateTime Time, int Suppressed)? Left, Right, Case;
@@ -63,6 +78,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _watcher = watcher;
+        _config = config;
         _onUpdateApplied = onUpdateApplied;
         _onAliveChanged = onAliveChanged;
 
@@ -73,10 +89,28 @@ public partial class MainWindow : Window
         AutoStartCheck.IsChecked = AutoStartHelper.IsEnabled();
         _initialized = true;
 
+        ApplyPinState();   // 恢复用户的图钉置顶设置
+
+        LoadKnownDevices(config);
+        // 启动时优先显示上次关注的设备（即使它还没开始广播）
+        if (_active is null && config.BoundMac is { } bound)
+        {
+            var last = _devices.Values.FirstOrDefault(
+                d => d.Mac.Equals(bound, StringComparison.OrdinalIgnoreCase));
+            if (last is not null) SetActive(last);
+        }
+
         _watcher.UpdateReceived += u => Dispatcher.Invoke(() => ApplyUpdate(u));
 
         _aliveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _aliveTimer.Tick += (_, _) => RefreshAliveState();
+        _aliveTimer.Tick += (_, _) =>
+        {
+            RefreshAliveState();
+            // 每 5 秒枚举一次系统连接的音频设备，把未适配格式的耳机补进列表
+            if (++_probeTick % 5 == 0) RefreshConnectedAudio();
+            // 每 15 秒读一次系统电量（HFP/AVRCP 上报），作广播暂停时的兜底显示
+            if (_probeTick % 15 == 0) ProbeSystemBattery();
+        };
         _aliveTimer.Start();
 
         Loaded += (_, _) =>
@@ -90,8 +124,10 @@ public partial class MainWindow : Window
 
     private void ApplyUpdate(EarbudsUpdate u)
     {
+        var isNew = !_devices.ContainsKey(u.Mac);
         var st = GetOrAdd(u.Mac);
         st.LastSeen = u.Timestamp;
+        st.BroadcastSeen = u.Timestamp;
         st.Rssi = u.Rssi;
         var s = u.Snapshot;
         if (st.Name.Length == 0)
@@ -105,6 +141,38 @@ public partial class MainWindow : Window
         // 在仓状态：只在收到有效值时更新，避免噪声帧闪烁
         if (s.LeftPercent is not null) st.LeftInCase = s.LeftInCase;
         if (s.RightPercent is not null) st.RightInCase = s.RightInCase;
+
+        // 广播能被解析 = 该格式已适配：探测登记的条目原位升级
+        // （多数耳机广播 MAC 与经典蓝牙 MAC 相同，同一个条目）
+        var upgraded = false;
+        if (!st.IsAdapted)
+        {
+            st.IsAdapted = true;
+            upgraded = true;
+            if (ReferenceEquals(st, _active))
+                UnadaptedHint.Visibility = Visibility.Collapsed;
+        }
+
+        // 合并同名"未适配"影子条目（经典蓝牙 MAC ≠ 广播 MAC 时系统枚举另登记的）；
+        // 排除 st 自己，避免把正在更新的条目删掉
+        var merged = false;
+        foreach (var shadow in _devices.Values
+                     .Where(d => !d.IsAdapted && !ReferenceEquals(d, st) &&
+                                 d.Name.Length > 0 &&
+                                 d.Name.Equals(st.Name, StringComparison.OrdinalIgnoreCase))
+                     .ToList())
+        {
+            _devices.Remove(shadow.Mac);
+            _knownMacs.Remove(shadow.Mac);
+            if (ReferenceEquals(shadow, _active)) _active = null;
+            merged = true;
+        }
+
+        if (isNew || merged || upgraded)
+        {
+            PersistKnownDevices();   // 名单变化落盘
+            UpdateSwitcherVisibility();
+        }
 
         if (_active is null)
             SetActive(st);   // 第一台设备自动选中
@@ -136,10 +204,12 @@ public partial class MainWindow : Window
         _active = st;
         DeviceNameText.Text = st.Name.Length > 0 ? st.Name : "正在识别…";
         MacText.Text = st.Mac;
+        UnadaptedHint.Visibility = st.IsAdapted ? Visibility.Collapsed : Visibility.Visible;
         SetRingInstant(LeftRing, st.Left);
         SetRingInstant(RightRing, st.Right);
         SetRingInstant(CaseRing, st.Case);
         RefreshAliveState();
+        ProbeSystemBattery();   // 切换设备立即读一次系统电量，不等 15 秒心跳
     }
 
     private static string InCaseText(bool? inCase) => inCase switch
@@ -191,52 +261,67 @@ public partial class MainWindow : Window
     private void RefreshAliveState()
     {
         var st = _active;
+        bool unadapted = st is { IsAdapted: false };
         // 断开判定：广播新鲜 OR 系统蓝牙仍保持连接（合盖后广播立停，但系统
         // ACL 会保持几秒；两者都失去才算断开，避免慢判/误判）
         bool hasData = st is not null && st.LastSeen != DateTime.MinValue;
         bool fresh = hasData && (DateTime.Now - st!.LastSeen).TotalSeconds <= StaleAfterSeconds;
         // 广播停了不代表断开（耳机连着电脑用时就不再广播）。系统连接判定两路：
         // Win32 蓝牙枚举（部分耳机查不到）+ 音频端点（耳机能出声就一定在）
-        var probeName = st!.Name.Length > 0 ? st.Name : null;
+        var probeName = st is { Name.Length: > 0 } ? st.Name : null;
         bool systemConnected = hasData && !fresh && (
-            BtConnectionProbe.IsConnected(st.Mac, probeName) ||
+            BtConnectionProbe.IsConnected(st!.Mac, probeName) ||
             AudioEndpointProbe.HasActiveEndpoint(probeName));
         bool alive = fresh || systemConnected;
 
         LiveDot.Fill = new SolidColorBrush(alive ? GoodColor : UnknownColor);
         StartPulse(alive);
 
-        StateText.Text = !hasData
-            ? "请打开充电仓盖"
-            : alive
-                ? fresh
-                    ? $"实时更新 · 信号 {st!.Rssi} dBm"
-                    : "蓝牙保持连接 · 等待新广播"
-                : "信号丢失 · 请打开仓盖刷新电量";
+        StateText.Text = unadapted
+            ? (alive ? "已连接 · 该耳机暂未适配电量解析" : "未连接")
+            : !hasData
+                ? "请打开充电仓盖"
+                : alive
+                    ? fresh && st!.Rssi is { } rssi
+                        ? $"实时更新 · 信号 {rssi} dBm"
+                        : "蓝牙保持连接 · 等待新广播"
+                    : "信号丢失 · 请打开仓盖刷新电量";
 
         CardsGrid.Opacity = hasData && !alive ? 0.45 : 1.0;
 
         if (hasData)
         {
-            // 通道级离线只在广播新鲜时判定：广播停了可能只是合盖，
-            // 不能据此说某只耳机离线
-            RenderChannel(LeftCard, LeftStatusText, LeftBolt, st!.Left, st.LeftInCase, fresh);
-            RenderChannel(RightCard, RightStatusText, RightBolt, st.Right, st.RightInCase, fresh);
+            // 通道渲染：数据过期即回未知态「--」，不挂旧值（旧电量会误导）。
+            // 广播新鲜期间单通道超时=这一路真离线（灰显+「离线」）；
+            // 广播整体停止=数据过期（设备可能仍连着），只回「--」不标离线。
+            bool leftFresh = RenderChannel(LeftCard, LeftStatusText, LeftBolt, st!.Left, st.LeftInCase, fresh);
+            bool rightFresh = RenderChannel(RightCard, RightStatusText, RightBolt, st.Right, st.RightInCase, fresh);
+            if (!leftFresh) { LeftRing.SetInstant(-1); LeftRing.RingColor = UnknownColor; }
+            if (!rightFresh) { RightRing.SetInstant(-1); RightRing.RingColor = UnknownColor; }
 
             if (st.Case is { } c)
             {
-                bool caseOnline = !fresh || (DateTime.Now - c.Time).TotalSeconds <= StaleAfterSeconds;
-                CaseCard.Opacity = caseOnline ? 1.0 : 0.45;
-                CaseStatusText.Text = caseOnline ? $"电量 {c.Value}%" : "离线";
-            }
-            else
-            {
+                bool caseOnline = (DateTime.Now - c.Time).TotalSeconds <= ChannelFreshSeconds;
                 CaseCard.Opacity = 1.0;
+                if (caseOnline)
+                {
+                    CaseStatusText.Text = "在线";   // 电量数字在圆环上已显示，状态行不重复
+                }
+                else
+                {
+                    CaseStatusText.Text = fresh ? "离线" : "--";
+                    CaseRing.SetInstant(-1);
+                    CaseRing.RingColor = UnknownColor;
+                }
+            }
+            else if (!fresh)
+            {
+                CaseStatusText.Text = "--";
             }
         }
 
         if (!hasData || !alive)
-            CaseStatusText.Text = "等待广播";
+            CaseStatusText.Text = unadapted ? "--" : "等待广播";
 
         // 连接/断开状态变化时通知托盘（断开后托盘悬浮提示不再挂旧电量）
         if (_lastAlive != alive)
@@ -245,37 +330,102 @@ public partial class MainWindow : Window
             _onAliveChanged?.Invoke(alive);
         }
 
+        if (st is not null) RefreshSystemBatteryText(st, alive);
         UpdateSwitcherVisibility();
     }
 
+    // ---------- 系统电量兜底（HFP/AVRCP 上报，蓝牙设置页同源） ----------
+
     /// <summary>
-    /// 单通道渲染：从未见过有效值保持未知态（"--"，不算离线）；
-    /// 广播新鲜但该通道长期无有效值 = 只有这一路离线，单独灰显。
+    /// 系统电量兜底行从隐藏变为显示时触发：耳机连接电脑播放期间广播停止，
+    /// 拿不到广播帧，App 层借此弹出「整机电量」气泡（与开盖广播气泡同一冷却）。
     /// </summary>
-    private static void RenderChannel(Border card, TextBlock status, System.Windows.Shapes.Path bolt,
+    public event Action<int>? SystemBatteryAppeared;
+    private bool _sysBatteryShown;
+
+    /// <summary>当前关注设备名（供 App 层弹气泡显示标题）。</summary>
+    public string? ActiveDeviceName => _active?.Name;
+
+    /// <summary>每 15 秒读一次当前设备的系统级电量，广播暂停/未适配时兜底显示。</summary>
+    private void ProbeSystemBattery()
+    {
+        if (_active is not { } st) return;
+        st.SystemBattery = SystemBatteryProbe.GetLevel(st.Mac);
+        RefreshAliveState();   // 重新渲染（alive 状态可能未变，但电量值更新了）
+    }
+
+    /// <summary>
+    /// 系统电量行：仅在设备仍连接且广播数据不新鲜时显示。
+    /// 用 BroadcastSeen（而非 LastSeen）判定广播新鲜度——未适配设备的 LastSeen
+    /// 被连接心跳持续刷新，若用它判定，未适配设备永远无法显示系统电量。
+    /// 设备彻底断连后系统电量是过时旧值（耳机在仓内可能已充到更高），不显示。
+    /// </summary>
+    private void RefreshSystemBatteryText(DeviceState st, bool alive)
+    {
+        // 只在完全没获取到数据时兜底：三个通道都没有新鲜值（从未见过值，
+        // 或数据已过期回「--」）；任一通道还在实时更新就不显示，避免信息重复
+        bool anyFreshChannel = IsChannelFresh(st.Left) || IsChannelFresh(st.Right) ||
+                               IsChannelFresh(st.Case);
+        if (alive && st.SystemBattery is { } lv && !anyFreshChannel)
+        {
+            SystemBatteryText.Text = st.IsAdapted
+                ? $"系统电量 {lv}% · 放入充电仓重新开盖可刷新"
+                : $"系统电量 {lv}%（未适配机型，整机电量）";
+            SystemBatteryText.Visibility = Visibility.Visible;
+            if (!_sysBatteryShown)
+            {
+                _sysBatteryShown = true;
+                SystemBatteryAppeared?.Invoke(lv);
+            }
+        }
+        else
+        {
+            SystemBatteryText.Visibility = Visibility.Collapsed;
+            _sysBatteryShown = false;
+        }
+    }
+
+    /// <summary>通道数据是否仍然新鲜（3 秒内有有效值，卡片显示窗口）。</summary>
+    private static bool IsChannelFresh((int Value, DateTime Time, int Suppressed)? s) =>
+        s is { } v && (DateTime.Now - v.Time).TotalSeconds <= ChannelFreshSeconds;
+
+    /// <summary>
+    /// 单通道渲染，返回该通道数据是否新鲜（供调用方同步电量圆环）。
+    /// 从未见过值保持未知态（"--"）；数据过期不挂旧值——广播新鲜期间单独
+    /// 超时=这一路真离线（灰显+「离线」），广播整体停止=数据过期只回「--」
+    /// （设备可能仍连着，不算离线）。
+    /// </summary>
+    private static bool RenderChannel(Border card, TextBlock status, System.Windows.Shapes.Path bolt,
         (int Value, DateTime Time, int Suppressed)? state, bool? inCase, bool judgeOffline)
     {
+        bolt.Visibility = Visibility.Collapsed;
         if (state is null)
         {
             card.Opacity = 1.0;
             status.Text = "--";
-            bolt.Visibility = Visibility.Collapsed;
-            return;
+            return false;
         }
 
-        bool online = !judgeOffline ||
-                      (DateTime.Now - state.Value.Time).TotalSeconds <= StaleAfterSeconds;
-        card.Opacity = online ? 1.0 : 0.45;
-        status.Text = online ? InCaseText(inCase) : "离线";
-        bolt.Visibility = online && inCase == true ? Visibility.Visible : Visibility.Collapsed;
+        bool fresh = IsChannelFresh(state);
+        if (!fresh)
+        {
+            card.Opacity = judgeOffline ? 0.45 : 1.0;
+            status.Text = judgeOffline ? "离线" : "--";
+            return false;
+        }
+
+        card.Opacity = 1.0;
+        status.Text = InCaseText(inCase);
+        bolt.Visibility = inCase == true ? Visibility.Visible : Visibility.Collapsed;
+        return true;
     }
 
     private static void SetRingInstant(BatteryRing ring, (int Value, DateTime Time, int Suppressed)? state)
     {
-        if (state is { } s)
+        if (IsChannelFresh(state))
         {
-            ring.RingColor = ColorFor(s.Value);
-            ring.SetInstant(s.Value);
+            ring.RingColor = ColorFor(state!.Value.Value);
+            ring.SetInstant(state.Value.Value);
         }
         else
         {
@@ -322,6 +472,26 @@ public partial class MainWindow : Window
 
     private void MinButton_Click(object sender, RoutedEventArgs e) => HideToTray();
 
+    // ---------- 图钉置顶（微信式） ----------
+
+    private void PinButton_Click(object sender, RoutedEventArgs e)
+    {
+        _config.TopMost = !_config.TopMost;
+        _config.Save();
+        ApplyPinState();
+    }
+
+    /// <summary>应用置顶状态：窗口 Topmost + 图钉图标/提示切换（置顶=实心钉橙色）。</summary>
+    private void ApplyPinState()
+    {
+        bool pinned = _config.TopMost;
+        Topmost = pinned;
+        PinButton.Content = pinned ? "\uE841" : "\uE718";
+        PinButton.Foreground = new SolidColorBrush(
+            pinned ? Color.FromRgb(0xE8, 0x7A, 0x3E) : Color.FromRgb(0x8F, 0x8F, 0x98));
+        PinButton.ToolTip = pinned ? "取消置顶" : "窗口置顶";
+    }
+
     private void CloseButton_Click(object sender, RoutedEventArgs e) => HideToTray();
 
     private void HideToTray() => Hide();
@@ -330,11 +500,15 @@ public partial class MainWindow : Window
     {
         _watcher.Unbind();
         _devices.Clear();
+        _knownMacs.Clear();
+        _config.KnownDevices = null;
+        _config.Save();
         _active = null;
         DevicePopup.IsOpen = false;
 
         DeviceNameText.Text = "正在搜索…";
         MacText.Text = "";
+        UnadaptedHint.Visibility = Visibility.Collapsed;
         SetRingInstant(LeftRing, null);
         SetRingInstant(RightRing, null);
         SetRingInstant(CaseRing, null);
@@ -348,12 +522,140 @@ public partial class MainWindow : Window
 
     // ---------- 多设备切换 ----------
 
+    /// <summary>
+    /// 切换列表内容：当前设备 + 配置名单里的设备（常驻）+ 短窗口内见过的路人设备。
+    /// </summary>
     private List<DeviceState> RecentDevices() =>
         _devices.Values
             .Where(d => ReferenceEquals(d, _active) ||
+                        _knownMacs.Contains(d.Mac) ||
                         DateTime.Now - d.LastSeen <= DeviceListWindow)
             .OrderByDescending(d => d.LastSeen)
             .ToList();
+
+    /// <summary>启动时从配置恢复设备名单（跨重启，"不同时段连接"的耳机也能切回）。</summary>
+    private void LoadKnownDevices(AppConfig config)
+    {
+        if (config.KnownDevices is null) return;
+        foreach (var k in config.KnownDevices)
+        {
+            if (string.IsNullOrWhiteSpace(k.Mac) || _devices.ContainsKey(k.Mac)) continue;
+            _devices[k.Mac] = new DeviceState
+            {
+                Mac = k.Mac,
+                Name = k.Name ?? "",
+                LastSeen = k.LastSeen == default ? DateTime.MinValue : k.LastSeen,
+                IsAdapted = k.Adapted,
+            };
+            _knownMacs.Add(k.Mac);
+        }
+        UpdateSwitcherVisibility();
+    }
+
+    /// <summary>
+    /// 把设备名单写入配置（退出时和新设备出现时调用）。
+    /// 上限 8 条；信号过弱的路人耳机（可能是邻居的）不入名单。
+    /// </summary>
+    public void PersistKnownDevices()
+    {
+        const int persistMinRssi = -85;
+        var list = _devices.Values
+            .Where(d => ReferenceEquals(d, _active) ||
+                        d.Rssi is null || d.Rssi >= persistMinRssi)
+            .OrderByDescending(d => d.LastSeen)
+            .Take(8)
+            .Select(d => new KnownDeviceEntry
+            {
+                Mac = d.Mac,
+                Name = d.Name,
+                LastSeen = d.LastSeen == DateTime.MinValue ? DateTime.Now : d.LastSeen,
+                Adapted = d.IsAdapted,
+            })
+            .ToList();
+        _config.KnownDevices = list;
+        _knownMacs.Clear();
+        foreach (var k in list) _knownMacs.Add(k.Mac);
+        _config.Save();
+    }
+
+    /// <summary>
+    /// 系统设备名与档案名的宽松匹配：同型号耳机在系统里的名字可能带后缀
+    /// （如 "Mi Air2 SE Stereo"、"Mi Air2 SE（立体声）"）或被用户重命名，
+    /// 全等会漏判成「未适配」。双向包含 + 大小写不敏感；短名（<3 字符）只允许正向。
+    /// </summary>
+    private static bool NameMatchesProfile(string deviceName, string profileName) =>
+        deviceName.Contains(profileName, StringComparison.OrdinalIgnoreCase) ||
+        (deviceName.Length >= 3 &&
+         profileName.Contains(deviceName, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>设备名是否对上任意已登记的档案（用于「同型号即已适配」判定）。</summary>
+    private static bool IsKnownFormatName(string name) =>
+        name.Length > 0 && XiaomiAdvParser.GetSupportedNames().Any(n => NameMatchesProfile(name, n));
+
+    /// <summary>
+    /// 探测系统里连着的音频设备：已配对蓝牙音频 ∩ 活动音频端点（端点名包含设备名）。
+    /// 连着但广播格式未适配的耳机也补进设备列表（只有在线状态，无电量数据）。
+    /// Win32 的 fConnected 对部分 TWS 不可靠，连接与否以音频端点为准；
+    /// 未连接的配对设备不登记，已登记的靠心跳过期自然变灰。
+    /// </summary>
+    private void RefreshConnectedAudio()
+    {
+        List<(string Mac, string Name)> paired;
+        List<string> endpoints;
+        try
+        {
+            paired = BtConnectionProbe.ListPairedAudioDevices();
+            endpoints = AudioEndpointProbe.ListActiveEndpointNames();
+        }
+        catch { return; }   // 枚举失败不影响主流程，下个周期再试
+
+        var changed = false;
+        foreach (var (mac, name) in paired)
+        {
+            if (name.Length == 0) continue;
+            // 没有任何活动端点提到它 → 未连接
+            if (!endpoints.Any(ep => ep.Contains(name, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            // 已适配设备（广播能解析出显示名）不重复登记（宽匹配，兼容系统名带后缀）
+            if (_devices.Values.Any(d => d.IsAdapted && d.Name.Length > 0 &&
+                                         NameMatchesProfile(name, d.Name)))
+                continue;
+            if (_devices.TryGetValue(mac, out var st))
+            {
+                st.LastSeen = DateTime.Now;   // 已登记的设备：刷新在线心跳
+                // 之前按未适配登记的条目，名字对上已知格式就补升级（无需等广播）
+                if (!st.IsAdapted && IsKnownFormatName(name))
+                {
+                    st.IsAdapted = true;
+                    changed = true;
+                    if (ReferenceEquals(st, _active))
+                        UnadaptedHint.Visibility = Visibility.Collapsed;
+                }
+            }
+            else
+            {
+                // 名字能对上已登记的耳机格式（如 Air2 SE）就算已适配：
+                // 只是目前没收到广播，显示 "--" 等数据，而不是误导性的「未适配」
+                var knownFormat = IsKnownFormatName(name);
+                _devices[mac] = st = new DeviceState
+                {
+                    Mac = mac,
+                    Name = name,
+                    LastSeen = DateTime.Now,
+                    IsAdapted = knownFormat,
+                };
+                changed = true;
+            }
+            // 面板还没有任何设备在显示时，自动选中连着的耳机
+            if (_active is null)
+                SetActive(st);
+        }
+        if (changed)
+        {
+            PersistKnownDevices();
+            UpdateSwitcherVisibility();
+        }
+    }
 
     private void UpdateSwitcherVisibility()
     {
@@ -370,6 +672,7 @@ public partial class MainWindow : Window
             Name = d.Name.Length > 0 ? d.Name : d.Mac,
             Summary = Summarize(d),
             IsCurrent = ReferenceEquals(d, _active),
+            Adapted = d.IsAdapted,
             Online = DateTime.Now - d.LastSeen <= TimeSpan.FromSeconds(StaleAfterSeconds),
         }).ToList();
         DevicePopup.IsOpen = true;
@@ -388,11 +691,12 @@ public partial class MainWindow : Window
 
     private static string Summarize(DeviceState d)
     {
+        if (!d.IsAdapted)
+            return (DateTime.Now - d.LastSeen).TotalSeconds <= StaleAfterSeconds
+                ? "已连接 · 未适配"
+                : "未连接 · 未适配";
         string part((int Value, DateTime Time, int Suppressed)? s) =>
-            s is null ? "--"
-            : DateTime.Now - s.Value.Time <= TimeSpan.FromSeconds(StaleAfterSeconds)
-                ? $"{s.Value.Value}%"
-                : "离线";
+            IsChannelFresh(s) ? $"{s!.Value.Value}%" : "--";
         return $"左 {part(d.Left)} · 右 {part(d.Right)} · 仓 {part(d.Case)}";
     }
 
@@ -403,12 +707,14 @@ public partial class MainWindow : Window
         public required string Name { get; init; }
         public required string Summary { get; init; }
         public required bool IsCurrent { get; init; }
+        public required bool Adapted { get; init; }
         public required bool Online { get; init; }
 
         public System.Windows.Media.Brush Dot =>
             new SolidColorBrush(Online ? GoodColor : UnknownColor);
-        public string Badge => IsCurrent ? "当前" : "";
-        public Visibility BadgeVisibility => IsCurrent ? Visibility.Visible : Visibility.Collapsed;
+        public string Badge => IsCurrent ? "当前" : !Adapted ? "未适配" : "";
+        public Visibility BadgeVisibility =>
+            Badge.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void AutoStartCheck_Changed(object sender, RoutedEventArgs e)

@@ -37,6 +37,7 @@ public partial class App : Application
         Core.EarbudsWatcher.DiagLog("启动：单实例检查通过");
 
         _config = AppConfig.Load();
+        AutoStartHelper.EnsureMinimizedFlag();   // 旧版自启动值升级为托盘启动
         _watcher = new EarbudsWatcher(_config);
 
         _window = new MainWindow(_watcher, _config,
@@ -62,7 +63,7 @@ public partial class App : Application
             Core.EarbudsWatcher.DiagLog($"App 层已保存配置: {_config.BoundMac}");
         });
 
-        // 主面板隐藏时，耳机从休眠中醒来（开盖/重新连上）→ 最上层电量提示
+        // 主面板隐藏时，耳机从休眠中醒来（开盖/重新连上）→ 最上层电量气泡（弹一下自动消失）
         var lastDataAt = DateTime.MinValue;
         var lastToastAt = DateTime.Now;   // 启动后第一波广播不弹，等真正"打开耳机"
         _watcher.UpdateReceived += u => Dispatcher.Invoke(() =>
@@ -75,6 +76,16 @@ public partial class App : Application
             if (!quiet || now - lastToastAt < TimeSpan.FromMinutes(5)) return;
             lastToastAt = now;
             var toast = new ToastWindow(u.Snapshot, ShowMainWindow);
+            toast.Show();
+        });
+
+        // 耳机连接电脑后广播停止（拿不到广播帧），系统电量兜底首次出现时同样弹气泡
+        _window.SystemBatteryAppeared += lv => Dispatcher.Invoke(() =>
+        {
+            if (_window is { IsVisible: true }) return;
+            if (DateTime.Now - lastToastAt < TimeSpan.FromMinutes(5)) return;
+            lastToastAt = DateTime.Now;
+            var toast = new ToastWindow(_window.ActiveDeviceName ?? "耳机", lv, ShowMainWindow);
             toast.Show();
         });
 
@@ -126,6 +137,7 @@ public partial class App : Application
     private void ExitApp()
     {
         _window?.PersistPosition(_config);
+        _window?.PersistKnownDevices();   // 设备名单随退出落盘
         _window?.DisposeCapture();
         _config.Save();
         _tray?.Dispose();

@@ -6,6 +6,8 @@ namespace RonghuiEarbuds.App.Core;
 /// 查询系统蓝牙 ACL 连接状态（经典蓝牙），不依赖耳机自身广播。
 /// 耳机合盖/关机后 Windows 会在数秒内断开 ACL，fConnected 立即翻为 false，
 /// 比等广播超时（合盖即停广播）更快、更可靠地判断断开。
+/// 注意：此 API 的 fConnected 对部分 TWS 耳机仍可能不准，
+/// 可靠性以音频端点判定（AudioEndpointProbe）为最高，两者并联使用。
 /// </summary>
 public static class BtConnectionProbe
 {
@@ -15,7 +17,10 @@ public static class BtConnectionProbe
         public uint dwSize;
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    // 注意：这两个结构体必须用默认对齐（不能 Pack=1），否则 x64 上
+    // hRadio 偏移错位、dwSize≠原生大小（560），BluetoothFindFirstDevice
+    // 会直接拒收返回空——此前"枚举不到任何设备"即此因
+    [StructLayout(LayoutKind.Sequential)]
     private struct BLUETOOTH_DEVICE_SEARCH_PARAMS
     {
         public uint dwSize;
@@ -34,7 +39,7 @@ public static class BtConnectionProbe
         public ushort wYear, wMonth, wDayOfWeek, wDay, wHour, wMinute, wSecond, wMilliseconds;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode, Pack = 1)]
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct BLUETOOTH_DEVICE_INFO
     {
         public uint dwSize;
@@ -132,6 +137,53 @@ public static class BtConnectionProbe
             BluetoothFindDeviceClose(h);
             return matched && connected;
         }
+    }
+
+    /// <summary>
+    /// 枚举已配对的蓝牙音频设备（设备大类 = 音频，即耳机/音箱）。
+    /// 注意：此 API 的 fConnected 标志对部分 TWS 耳机不可靠（实测恒为 false），
+    /// 因此这里只列配对名单，是否真在连接由音频端点活动状态判断
+    /// （见 AudioEndpointProbe.ListActiveEndpointNames）。
+    /// </summary>
+    public static List<(string Mac, string Name)> ListPairedAudioDevices()
+    {
+        var result = new List<(string, string)>();
+        lock (Gate)
+        {
+            var radio = GetRadio();
+            if (radio == IntPtr.Zero)
+            {
+                _radio = IntPtr.Zero;   // 电台可能重启过，下次重新打开
+                return result;
+            }
+
+            var sp = new BLUETOOTH_DEVICE_SEARCH_PARAMS
+            {
+                dwSize = (uint)Marshal.SizeOf<BLUETOOTH_DEVICE_SEARCH_PARAMS>(),
+                fReturnAuthenticated = 1,
+                fReturnRemembered = 1,
+                fReturnUnknown = 0,
+                fReturnConnected = 1,
+                fIssueInquiry = 0,
+                cTimeoutMultiplier = 0,
+                hRadio = radio,
+            };
+            var size = (uint)Marshal.SizeOf<BLUETOOTH_DEVICE_INFO>();
+            var di = new BLUETOOTH_DEVICE_INFO { dwSize = size };
+            var h = BluetoothFindFirstDevice(ref sp, ref di);
+            if (h == IntPtr.Zero) return result;
+
+            while (true)
+            {
+                // Class of Device 第 8-12 位 = 主设备大类，0x04 = 音频/视频
+                if (((di.ulClassOfDevice >> 8) & 0x1F) == 0x04)
+                    result.Add((EarbudsWatcher.FormatMac(di.Address), di.szName));
+                di = new BLUETOOTH_DEVICE_INFO { dwSize = size };
+                if (BluetoothFindNextDevice(h, ref di) == 0) break;
+            }
+            BluetoothFindDeviceClose(h);
+        }
+        return result;
     }
 
     /// <summary>"AA:BB:CC:DD:EE:FF" → BLUETOOTH_ADDRESS（低字节在前）。</summary>

@@ -67,6 +67,8 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                                 VerticalAlignment="Center" Margin="0,0,10,0">
+                        <Button x:Name="PinButton" Style="{StaticResource TitleBarButton}"
+                                Content="&#xE718;" Click="PinButton_Click" ToolTip="窗口置顶"/>
                         <Button x:Name="MinButton" Style="{StaticResource TitleBarButton}"
                                 Content="&#xE921;" Click="MinButton_Click"/>
                         <Button x:Name="CloseButton" Style="{StaticResource TitleBarButton}"
@@ -108,6 +110,13 @@
                         </StackPanel>
                         <TextBlock x:Name="StateText" Margin="16,4,0,0" FontSize="11.5"
                                    Foreground="#8F8F98" Text="请打开充电仓盖"/>
+                        <TextBlock x:Name="SystemBatteryText" Margin="16,3,0,0" FontSize="11"
+                                   Foreground="#9FB58A" Visibility="Collapsed"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="UnadaptedHint" Margin="16,3,0,0" FontSize="11"
+                                   Foreground="#C98A5A" Visibility="Collapsed"
+                                   TextTrimming="CharacterEllipsis"
+                                   Text="点「适配名单」提交适配，等待更新支持"/>
                     </StackPanel>
                     <TextBlock x:Name="MacText" Grid.Column="1" VerticalAlignment="Top" Margin="0,4,0,0"
                                FontSize="10.5" Foreground="#5C5C66" Text=""/>
