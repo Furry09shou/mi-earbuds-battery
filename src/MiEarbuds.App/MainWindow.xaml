@@ -161,7 +161,8 @@
                         <Button x:Name="UpdateButton" Style="{StaticResource GhostButton}"
                                 Content="检查更新" Click="UpdateButton_Click"/>
                         <Button x:Name="AdaptButton" Style="{StaticResource GhostButton}"
-                                Content="适配新耳机" Margin="8,0,0,0" Click="AdaptButton_Click"/>
+                                Content="适配新耳机" Margin="8,0,0,0" Click="AdaptButton_Click"
+                                ToolTip="已适配：Xiaomi Air2 SE&#x0a;其他型号可用采集向导众包适配"/>
                         <Button x:Name="RebindButton" Style="{StaticResource GhostButton}"
                                 Content="重新绑定" Margin="8,0,0,0" Click="RebindButton_Click"/>
                     </StackPanel>

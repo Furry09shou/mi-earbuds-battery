@@ -10,7 +10,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>MiEarbuds</AssemblyName>
     <RootNamespace>MiEarbuds.App</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 

@@ -1,0 +1,23 @@
+<Window x:Class="MiEarbuds.App.ToastWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="耳机电量" Width="312" SizeToContent="Height"
+        WindowStartupLocation="Manual"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
+        ShowActivated="False">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="0" GlassFrameThickness="0"
+                      CornerRadius="0" UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Border x:Name="Root" CornerRadius="12" Background="#E6161619" BorderBrush="#2B2B31"
+            BorderThickness="1" Padding="16,12" Cursor="Hand"
+            MouseLeftButtonDown="Root_Click">
+        <StackPanel>
+            <TextBlock x:Name="TitleText" Text="Mi Air2 SE 已连接" FontSize="12.5"
+                       FontWeight="SemiBold" Foreground="#EDEDF0"/>
+            <StackPanel x:Name="Rows" Margin="0,8,0,0"/>
+        </StackPanel>
+    </Border>
+</Window>

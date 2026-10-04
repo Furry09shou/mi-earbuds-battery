@@ -57,8 +57,13 @@
             <StackPanel Grid.Row="1" Margin="20,0,20,0">
                 <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="#8F8F98"
                            Text="你的耳机型号暂不受支持？按向导做几个简单动作，软件会记录耳机的广播数据用于破解协议。数据不含个人隐私。"/>
+                <TextBlock TextWrapping="Wrap" FontSize="11.5" Margin="0,8,0,0">
+                    <Run Text="当前已适配：" Foreground="#5C5C66"/>
+                    <Run Text="Xiaomi Air2 SE" Foreground="#6FBF73" FontWeight="SemiBold"/>
+                    <Run Text="（更多型号持续增加，见 GitHub）" Foreground="#5C5C66"/>
+                </TextBlock>
                 <TextBlock Text="耳机型号名称" FontSize="11.5" Foreground="#C9C9CF"
-                           Margin="0,12,0,6"/>
+                           Margin="0,10,0,6"/>
                 <TextBox x:Name="ModelBox" Style="{StaticResource ModelBoxStyle}"
                          Text="例如：Redmi Buds 5"/>
             </StackPanel>

@@ -58,6 +58,21 @@ public partial class App : Application
             Core.EarbudsWatcher.DiagLog($"App 层已保存配置: {_config.BoundMac}");
         });
 
+        // 主面板隐藏时，耳机从休眠中醒来（开盖/重新连上）→ 最上层电量提示
+        var lastDataAt = DateTime.MinValue;
+        var lastToastAt = DateTime.Now;   // 启动后第一波广播不弹，等真正"打开耳机"
+        _watcher.UpdateReceived += u => Dispatcher.Invoke(() =>
+        {
+            var now = DateTime.Now;
+            var quiet = now - lastDataAt > TimeSpan.FromSeconds(30);
+            lastDataAt = now;
+            if (_window is { IsVisible: true }) return;
+            if (!quiet || now - lastToastAt < TimeSpan.FromMinutes(5)) return;
+            lastToastAt = now;
+            var toast = new ToastWindow(u.Snapshot, ShowMainWindow);
+            toast.Show();
+        });
+
         _watcher.Start();
 
         if (e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase)))
