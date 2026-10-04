@@ -24,5 +24,5 @@ assignees: ""
 维护者分析流程：
 1. 解压后按 `marker` 分段，对比各阶段字节差异
 2. 定位左耳/右耳/仓电量字节与标志位
-3. 在 `src/MiEarbuds.App/Core/XiaomiAdvParser.cs` 的 `Profiles` 登记新档案
+3. 在 `src/RonghuiEarbuds.App/Core/XiaomiAdvParser.cs` 的 `Profiles` 登记新档案
 4. 发新版本，用户端会自动收到更新提醒

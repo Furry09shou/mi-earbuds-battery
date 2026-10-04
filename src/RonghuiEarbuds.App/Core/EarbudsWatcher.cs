@@ -1,7 +1,7 @@
 using System.IO;
 using Windows.Devices.Bluetooth.Advertisement;
 
-namespace MiEarbuds.App.Core;
+namespace RonghuiEarbuds.App.Core;
 
 /// <summary>
 /// 被动监听耳机 BLE 广播（不限品牌，解析档案见 XiaomiAdvParser.Profiles），
@@ -77,7 +77,7 @@ public sealed class EarbudsWatcher : IDisposable
         try
         {
             var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MiEarbuds");
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RonghuiEarbuds");
             Directory.CreateDirectory(dir);
             File.AppendAllText(Path.Combine(dir, "watcher.log"),
                 $"[{DateTime.Now:HH:mm:ss}] {message}\r\n");

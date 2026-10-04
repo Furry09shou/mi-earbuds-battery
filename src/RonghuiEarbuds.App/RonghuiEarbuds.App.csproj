@@ -8,8 +8,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>MiEarbuds</AssemblyName>
-    <RootNamespace>MiEarbuds.App</RootNamespace>
+    <AssemblyName>RonghuiEarbuds</AssemblyName>
+    <RootNamespace>RonghuiEarbuds.App</RootNamespace>
     <Version>1.1.0</Version>
   </PropertyGroup>
 

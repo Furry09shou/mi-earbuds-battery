@@ -3,7 +3,7 @@ using System.IO.Compression;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Devices.Bluetooth.Advertisement;
 
-namespace MiEarbuds.App.Core;
+namespace RonghuiEarbuds.App.Core;
 
 /// <summary>
 /// 原始广播采集器（适配新耳机用）：不限机型，记录所有厂商数据段，
@@ -69,12 +69,12 @@ public sealed class CaptureService : IDisposable
         Ticked?.Invoke();
     }
 
-    /// <summary>导出到 文档\MiEarbudsCapture\，返回 jsonl 与 zip 路径。</summary>
+    /// <summary>导出到 文档\RonghuiEarbudsCapture\，返回 jsonl 与 zip 路径。</summary>
     public (string JsonlPath, string ZipPath) Export(string modelName)
     {
         string[] meta =
         {
-            $"{{\"type\":\"mi-earbuds-capture\",\"v\":1,\"model\":\"{modelName}\"," +
+            $"{{\"type\":\"ronghui-earbuds-capture\",\"v\":1,\"model\":\"{modelName}\"," +
             $"\"captured\":\"{DateTime.Now:O}\",\"packets\":{Count}}}",
             "{\"privacy\":\"包含耳机广播 MAC（仅用于分析），不含用户个人数据\"}",
         };
@@ -82,7 +82,7 @@ public sealed class CaptureService : IDisposable
         lock (_gate) snapshot = _lines.ToArray();
 
         var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MiEarbudsCapture");
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "RonghuiEarbudsCapture");
         Directory.CreateDirectory(dir);
 
         var safe = new string(modelName.Where(c => !Path.GetInvalidFileNameChars().Contains(c)).ToArray());

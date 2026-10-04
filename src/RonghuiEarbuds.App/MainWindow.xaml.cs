@@ -5,10 +5,10 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
-using MiEarbuds.App.Core;
-using MiEarbuds.App.UI;
+using RonghuiEarbuds.App.Core;
+using RonghuiEarbuds.App.UI;
 
-namespace MiEarbuds.App;
+namespace RonghuiEarbuds.App;
 
 public partial class MainWindow : Window
 {
@@ -294,7 +294,7 @@ public partial class MainWindow : Window
 
     // ==================== 适配视图：名单 + 分页向导（窗口内跳转） ====================
 
-    private const string IssueUrlBase = "https://github.com/Furry09shou/mi-earbuds-battery/issues/new";
+    private const string IssueUrlBase = "https://github.com/Furry09shou/ronghui-earbuds/issues/new";
     private const double MainViewHeight = 448;
     private const double AdapterListHeight = 480;
     private const double AdapterWizardHeight = 520;

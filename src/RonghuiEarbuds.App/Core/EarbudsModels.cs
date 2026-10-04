@@ -1,4 +1,4 @@
-namespace MiEarbuds.App.Core;
+namespace RonghuiEarbuds.App.Core;
 
 /// <summary>从一次 BLE 广播解析出的电池快照。</summary>
 public sealed record BatterySnapshot(

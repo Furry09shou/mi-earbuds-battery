@@ -1,4 +1,4 @@
-<Window x:Class="MiEarbuds.App.ToastWindow"
+<Window x:Class="RonghuiEarbuds.App.ToastWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="耳机电量" Width="312" SizeToContent="Height"

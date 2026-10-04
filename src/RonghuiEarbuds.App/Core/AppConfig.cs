@@ -1,7 +1,7 @@
 using System.IO;
 using System.Text.Json;
 
-namespace MiEarbuds.App.Core;
+namespace RonghuiEarbuds.App.Core;
 
 public sealed class AppConfig
 {
@@ -15,7 +15,7 @@ public sealed class AppConfig
     public DateTime? LastUpdateCheckUtc { get; set; }
 
     private static string Dir =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MiEarbuds");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RonghuiEarbuds");
     private static string FilePath => Path.Combine(Dir, "config.json");
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
@@ -54,7 +54,7 @@ public sealed class AppConfig
 public static class AutoStartHelper
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "MiEarbuds";
+    private const string ValueName = "RonghuiEarbuds";
 
     public static bool IsEnabled()
     {

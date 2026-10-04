@@ -1,7 +1,7 @@
 using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Storage.Streams;
 
-namespace MiEarbuds.App.Core;
+namespace RonghuiEarbuds.App.Core;
 
 /// <summary>
 /// 小米 TWS 耳机 0x038F 厂商广播解析器（档案制）。

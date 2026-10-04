@@ -1,8 +1,8 @@
 using System.Drawing;
-using MiEarbuds.App.Core;
+using RonghuiEarbuds.App.Core;
 using WinForms = System.Windows.Forms;
 
-namespace MiEarbuds.App.UI;
+namespace RonghuiEarbuds.App.UI;
 
 /// <summary>
 /// 托盘图标：动态显示最低电量数字 + 气泡通知（绑定成功 / 低电量提醒）。

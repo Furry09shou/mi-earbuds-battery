@@ -1,4 +1,4 @@
-// MiEarbuds BLE 探针 —— 用于破解小米耳机（Air2 SE 起步）的电量协议
+// RonghuiEarbuds BLE 探针 —— 用于破解小米耳机（Air2 SE 起步）的电量协议
 // 用法见 help 命令
 using System.Buffers;
 using System.Globalization;
@@ -436,7 +436,7 @@ static void Fail(string msg)
 static void PrintHelp()
 {
     Console.WriteLine("""
-        MiEarbuds BLE 探针 —— 破解小米耳机电量协议
+        RonghuiEarbuds BLE 探针 —— 破解小米耳机电量协议
 
         用法:
           probe scan                          扫描 BLE 广播（耳机开盖/取出时才有广播）

@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <RootNamespace>MiEarbuds.Probe</RootNamespace>
+    <RootNamespace>RonghuiEarbuds.Probe</RootNamespace>
   </PropertyGroup>
 
 </Project>

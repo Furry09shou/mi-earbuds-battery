@@ -2,20 +2,20 @@ using System.Diagnostics;
 using System.Reflection;
 using Microsoft.Win32;
 
-namespace MiEarbuds.Setup;
+namespace RonghuiEarbuds.Setup;
 
 /// <summary>
 /// 安装/卸载程序（一个 exe 两用）：
-///   MiEarbuds.Setup.exe            → 安装向导（自定义路径 / 自启动 / 快捷方式）
-///   MiEarbuds.Setup.exe --uninstall → 卸载（只操作注册表中自己的键与自己的文件，防误卸）
+///   RonghuiEarbuds.Setup.exe            → 安装向导（自定义路径 / 自启动 / 快捷方式）
+///   RonghuiEarbuds.Setup.exe --uninstall → 卸载（只操作注册表中自己的键与自己的文件，防误卸）
 /// </summary>
 internal static class Program
 {
     private const string AppName = "绒汇耳机助手";
-    private const string ExeName = "MiEarbuds.exe";
-    private const string RunValueName = "MiEarbuds";
+    private const string ExeName = "RonghuiEarbuds.exe";
+    private const string RunValueName = "RonghuiEarbuds";
     private const string UninstallKeyPath =
-        @"Software\Microsoft\Windows\CurrentVersion\Uninstall\MiEarbuds";
+        @"Software\Microsoft\Windows\CurrentVersion\Uninstall\RonghuiEarbuds";
 
     [STAThread]
     private static void Main(string[] args)
@@ -33,7 +33,7 @@ internal static class Program
     {
         var defaultTarget = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Programs", "MiEarbuds");
+            "Programs", "RonghuiEarbuds");
 
         var form = new Form
         {
@@ -154,7 +154,7 @@ internal static class Program
         }
         else
         {
-            foreach (var src in Directory.EnumerateFiles(AppContext.BaseDirectory, "MiEarbuds.*"))
+            foreach (var src in Directory.EnumerateFiles(AppContext.BaseDirectory, "RonghuiEarbuds.*"))
             {
                 File.Copy(src, Path.Combine(target, Path.GetFileName(src)), true);
             }
@@ -163,7 +163,7 @@ internal static class Program
         // 卸载程序本体也放进安装目录
         if (Environment.ProcessPath is { } self)
         {
-            File.Copy(self, Path.Combine(target, "MiEarbuds.Setup.exe"), true);
+            File.Copy(self, Path.Combine(target, "RonghuiEarbuds.Setup.exe"), true);
         }
     }
 
@@ -173,7 +173,7 @@ internal static class Program
         key.SetValue("DisplayName", $"{AppName} (Mi Earbuds Battery)");
         key.SetValue("DisplayVersion", version);
         key.SetValue("DisplayIcon", Path.Combine(target, ExeName));
-        key.SetValue("UninstallString", $"\"{Path.Combine(target, "MiEarbuds.Setup.exe")}\" --uninstall");
+        key.SetValue("UninstallString", $"\"{Path.Combine(target, "RonghuiEarbuds.Setup.exe")}\" --uninstall");
         key.SetValue("Publisher", "Furry09shou");
         key.SetValue("InstallLocation", target);
         key.SetValue("NoModify", 1, RegistryValueKind.DWord);
@@ -218,7 +218,7 @@ internal static class Program
 
         // 4. 配置文件（询问）
         var configDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MiEarbuds");
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RonghuiEarbuds");
         if (Directory.Exists(configDir) && MessageBox.Show(
                 "是否同时删除配置与绑定信息？", AppName,
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
@@ -287,10 +287,10 @@ internal static class Program
 
     // ============================ 公共辅助 ============================
 
-    /// <summary>结束正在运行的主程序；仅当进程路径能确认是 MiEarbuds.exe 时才结束。</summary>
+    /// <summary>结束正在运行的主程序；仅当进程路径能确认是 RonghuiEarbuds.exe 时才结束。</summary>
     private static void KillRunningApp(string target)
     {
-        foreach (var process in Process.GetProcessesByName("MiEarbuds"))
+        foreach (var process in Process.GetProcessesByName("RonghuiEarbuds"))
         {
             try
             {
@@ -377,13 +377,13 @@ internal static class Program
 
     private static string GetAppVersion()
     {
-        // 与主程序同版本号：从旁路的 MiEarbuds.dll 读取；读不到用自身
+        // 与主程序同版本号：从旁路的 RonghuiEarbuds.dll 读取；读不到用自身
         try
         {
             var beside = Path.Combine(AppContext.BaseDirectory,
-                "app", "MiEarbuds.dll");
+                "app", "RonghuiEarbuds.dll");
             if (!File.Exists(beside))
-                beside = Path.Combine(AppContext.BaseDirectory, "MiEarbuds.dll");
+                beside = Path.Combine(AppContext.BaseDirectory, "RonghuiEarbuds.dll");
             if (File.Exists(beside))
             {
                 var info = FileVersionInfo.GetVersionInfo(beside);

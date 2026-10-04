@@ -41,10 +41,10 @@ Air2 SE 在**充电仓盖打开**或**耳机（主机）工作中**会持续发�
 需要 .NET 8 SDK（Windows）：
 
 ```
-dotnet build src/MiEarbuds.App/MiEarbuds.App.csproj -c Release
+dotnet build src/RonghuiEarbuds.App/RonghuiEarbuds.App.csproj -c Release
 ```
 
-产物：`src/MiEarbuds.App/bin/Release/net8.0-windows10.0.19041.0/MiEarbuds.exe`
+产物：`src/RonghuiEarbuds.App/bin/Release/net8.0-windows10.0.19041.0/RonghuiEarbuds.exe`
 
 `probe/` 为逆向采集用的控制台工具（广播监听 + GATT dump），适配新耳机时使用。
 

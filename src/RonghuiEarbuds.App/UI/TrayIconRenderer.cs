@@ -1,7 +1,7 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 
-namespace MiEarbuds.App.UI;
+namespace RonghuiEarbuds.App.UI;
 
 /// <summary>生成托盘电池数字图标。</summary>
 public static class TrayIconRenderer

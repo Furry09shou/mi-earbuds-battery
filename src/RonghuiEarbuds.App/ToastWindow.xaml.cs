@@ -3,9 +3,9 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Controls;
-using MiEarbuds.App.Core;
+using RonghuiEarbuds.App.Core;
 
-namespace MiEarbuds.App;
+namespace RonghuiEarbuds.App;
 
 /// <summary>
 /// 最上层电量提示气泡：主面板隐藏时耳机开始广播（开盖/连上）自动弹出，

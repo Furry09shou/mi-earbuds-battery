@@ -1,14 +1,14 @@
 using System.IO;
 using System.Threading;
 using System.Windows;
-using MiEarbuds.App.Core;
-using MiEarbuds.App.UI;
+using RonghuiEarbuds.App.Core;
+using RonghuiEarbuds.App.UI;
 
-namespace MiEarbuds.App;
+namespace RonghuiEarbuds.App;
 
 public partial class App : Application
 {
-    private static readonly Mutex SingleInstance = new(true, "MiEarbuds_SingleInstance_E1B7", out _);
+    private static readonly Mutex SingleInstance = new(true, "RonghuiEarbuds_SingleInstance_E1B7", out _);
 
     private AppConfig _config = new();
     private EarbudsWatcher? _watcher;
@@ -137,7 +137,7 @@ public partial class App : Application
         try
         {
             var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MiEarbuds");
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RonghuiEarbuds");
             Directory.CreateDirectory(dir);
             File.AppendAllText(Path.Combine(dir, "error.log"),
                 $"[{DateTime.Now:HH:mm:ss}] {source}: {ex}\r\n\r\n");

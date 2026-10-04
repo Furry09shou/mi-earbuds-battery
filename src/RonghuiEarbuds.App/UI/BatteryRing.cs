@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 
-namespace MiEarbuds.App.UI;
+namespace RonghuiEarbuds.App.UI;
 
 /// <summary>
 /// 自绘电量圆环：底环 + 进度弧 + 居中百分比文字。
