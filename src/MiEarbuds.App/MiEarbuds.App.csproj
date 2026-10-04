@@ -11,7 +11,6 @@
     <AssemblyName>MiEarbuds</AssemblyName>
     <RootNamespace>MiEarbuds.App</RootNamespace>
     <Version>1.1.0</Version>
-    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <!-- WinForms 仅用于托盘，禁止其全局 using 污染 WPF 代码 -->

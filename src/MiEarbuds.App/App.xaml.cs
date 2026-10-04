@@ -29,14 +29,18 @@ public partial class App : Application
 
         if (!SingleInstance.WaitOne(0))
         {
+            Core.EarbudsWatcher.DiagLog("启动：单实例检查未通过，退出");
             Shutdown();
             return;
         }
 
+        Core.EarbudsWatcher.DiagLog("启动：单实例检查通过");
+
         _config = AppConfig.Load();
         _watcher = new EarbudsWatcher(_config);
 
-        _window = new MainWindow(_watcher, _config, u => _tray?.Feed(u));
+        _window = new MainWindow(_watcher, _config,
+            u => _tray?.Feed(u), alive => _tray?.SetConnected(alive));
 
         _tray = new TrayController(_watcher)
         {
@@ -76,9 +80,16 @@ public partial class App : Application
         _watcher.Start();
 
         if (e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase)))
+        {
+            Core.EarbudsWatcher.DiagLog("启动：--minimized，隐藏到托盘");
             _window.Hide();
+        }
         else
+        {
+            Core.EarbudsWatcher.DiagLog($"启动：显示主窗口（IsVisible 前={_window.IsVisible}）");
             ShowMainWindow();
+            Core.EarbudsWatcher.DiagLog($"启动：ShowMainWindow 返回（IsVisible 后={_window.IsVisible}）");
+        }
 
         _ = CheckUpdateDailyAsync();
     }

@@ -50,12 +50,27 @@ public sealed class TrayController : IDisposable
     }
 
     private EarbudsUpdate? _last;
+    private bool _connected = true;
 
     /// <summary>由 MainWindow 把最新数据回填给托盘（共享同一份状态）。</summary>
     public void Feed(EarbudsUpdate update)
     {
         _last = update;
         RefreshFromLast();
+    }
+
+    /// <summary>
+    /// 连接状态变化时由主窗口通知：断开后悬浮提示不再显示过期电量，
+    /// 恢复广播时下一次 RefreshFromLast 会自动覆盖。
+    /// </summary>
+    public void SetConnected(bool connected)
+    {
+        if (_connected == connected) return;
+        _connected = connected;
+        if (!connected)
+        {
+            _icon.Text = "小米耳机电量\n信号丢失 · 打开仓盖刷新";
+        }
     }
 
     private void RefreshFromLast()

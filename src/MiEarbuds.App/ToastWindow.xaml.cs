@@ -20,15 +20,10 @@ public partial class ToastWindow : Window
         InitializeComponent();
         _openMain = openMain;
 
-        string? fmt(int? v) => v is null ? "--" : v.Value.ToString();
+        string fmt(int? v) => v is null ? "--" : v.Value.ToString();
         AddRow("左耳", fmt(snapshot.LeftPercent), snapshot.LeftInCase);
         AddRow("右耳", fmt(snapshot.RightPercent), snapshot.RightInCase);
         AddRow("充电仓", fmt(snapshot.CasePercent), null);
-
-        // 右下角，托盘上方
-        var wa = SystemParameters.WorkArea;
-        Left = wa.Right - Width - 16;
-        Top = wa.Bottom - Height - 48;
     }
 
     private void AddRow(string label, string value, bool? charging)
@@ -63,6 +58,13 @@ public partial class ToastWindow : Window
     protected override void OnContentRendered(EventArgs e)
     {
         base.OnContentRendered(e);
+
+        // 右下角，托盘上方（此时 ActualWidth/ActualHeight 已就绪；
+        // SizeToContent=Height 时构造函数里 Height 还是 NaN，不能提前定位）
+        var wa = SystemParameters.WorkArea;
+        Left = wa.Right - ActualWidth - 16;
+        Top = wa.Bottom - ActualHeight - 48;
+
         // 进入动画
         Root.Opacity = 0;
         Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)));

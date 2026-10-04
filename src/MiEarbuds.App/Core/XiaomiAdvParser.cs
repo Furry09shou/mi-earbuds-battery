@@ -31,6 +31,9 @@ public static class XiaomiAdvParser
     public static string GetDisplayName(string productKey) =>
         Profiles.GetValueOrDefault(productKey, "小米耳机");
 
+    /// <summary>当前已适配的全部机型显示名（用于界面上的已适配列表）。</summary>
+    public static IReadOnlyCollection<string> GetSupportedNames() => Profiles.Values.ToArray();
+
     public static BatterySnapshot? Parse(IList<BluetoothLEManufacturerData> sections)
     {
         BluetoothLEManufacturerData? m = null;

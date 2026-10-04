@@ -14,7 +14,9 @@ public partial class MainWindow : Window
 {
     private readonly EarbudsWatcher _watcher;
     private readonly Action<EarbudsUpdate>? _onUpdateApplied;
+    private readonly Action<bool>? _onAliveChanged;
     private readonly DispatcherTimer _aliveTimer;
+    private bool _lastAlive = true;
 
     private bool _initialized;
     private DateTime _lastSeen = DateTime.MinValue;
@@ -42,11 +44,17 @@ public partial class MainWindow : Window
     private static readonly Color UnknownColor = Color.FromRgb(0x4A, 0x4A, 0x52);
 
     public MainWindow(EarbudsWatcher watcher, AppConfig config,
-        Action<EarbudsUpdate>? onUpdateApplied = null)
+        Action<EarbudsUpdate>? onUpdateApplied = null, Action<bool>? onAliveChanged = null)
     {
         InitializeComponent();
         _watcher = watcher;
         _onUpdateApplied = onUpdateApplied;
+        _onAliveChanged = onAliveChanged;
+
+        // 已适配机型列表：跟随解析器档案自动更新
+        AdaptButton.ToolTip = "已适配机型：\n" +
+            string.Join("\n", XiaomiAdvParser.GetSupportedNames().Select(n => "· " + n)) +
+            "\n\n其他型号可用采集向导广播数据，众包适配";
 
         RestorePosition(config);
 
@@ -162,6 +170,13 @@ public partial class MainWindow : Window
 
         if (!hasData || !alive)
             CaseStatusText.Text = "等待广播";
+
+        // 连接/断开状态变化时通知托盘（断开后托盘悬浮提示不再挂旧电量）
+        if (_lastAlive != alive)
+        {
+            _lastAlive = alive;
+            _onAliveChanged?.Invoke(alive);
+        }
     }
 
     private void StartPulse(bool animate)
