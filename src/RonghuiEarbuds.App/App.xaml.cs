@@ -63,9 +63,9 @@ public partial class App : Application
             Core.EarbudsWatcher.DiagLog($"App 层已保存配置: {_config.BoundMac}");
         });
 
-        // 主面板隐藏时，耳机从休眠中醒来（开盖/重新连上）→ 最上层电量气泡（弹一下自动消失）
+        // 主面板在托盘时，耳机开盖拿到广播数据（左/右/仓）→ 主窗口拉起到最上层
         var lastDataAt = DateTime.MinValue;
-        var lastToastAt = DateTime.Now;   // 启动后第一波广播不弹，等真正"打开耳机"
+        var lastShowAt = DateTime.Now;   // 启动后第一波广播不弹，等真正"打开耳机"
         _watcher.UpdateReceived += u => Dispatcher.Invoke(() =>
         {
             var now = DateTime.Now;
@@ -73,20 +73,10 @@ public partial class App : Application
             lastDataAt = now;
             if (_window is { IsVisible: true }) return;
             if (u.Mac != _window?.ActiveMac) return;   // 多设备：只提示当前关注的设备
-            if (!quiet || now - lastToastAt < TimeSpan.FromMinutes(5)) return;
-            lastToastAt = now;
-            var toast = new ToastWindow(u.Snapshot, ShowMainWindow);
-            toast.Show();
-        });
-
-        // 耳机连接电脑后广播停止（拿不到广播帧），系统电量兜底首次出现时同样弹气泡
-        _window.SystemBatteryAppeared += lv => Dispatcher.Invoke(() =>
-        {
-            if (_window is { IsVisible: true }) return;
-            if (DateTime.Now - lastToastAt < TimeSpan.FromMinutes(5)) return;
-            lastToastAt = DateTime.Now;
-            var toast = new ToastWindow(_window.ActiveDeviceName ?? "耳机", lv, ShowMainWindow);
-            toast.Show();
+            if (!quiet || now - lastShowAt < TimeSpan.FromMinutes(5)) return;
+            lastShowAt = now;
+            Core.EarbudsWatcher.DiagLog("开盖拿到广播数据：主窗口拉起到最上层");
+            ShowMainWindowTop();
         });
 
         _watcher.Start();
@@ -132,6 +122,27 @@ public partial class App : Application
     {
         _window!.Show();
         _window.Activate();
+    }
+
+    /// <summary>
+    /// 弹主窗口到最上层：临时置顶 1.5 秒确保盖过前台应用，随后恢复用户的图钉设置。
+    /// </summary>
+    private void ShowMainWindowTop()
+    {
+        _window!.Show();
+        _window.Activate();
+        var restoreTo = _config.TopMost;
+        _window.Topmost = true;
+        var t = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(1500)
+        };
+        t.Tick += (_, _) =>
+        {
+            t.Stop();
+            if (_window is not null) _window.Topmost = restoreTo;
+        };
+        t.Start();
     }
 
     private void ExitApp()

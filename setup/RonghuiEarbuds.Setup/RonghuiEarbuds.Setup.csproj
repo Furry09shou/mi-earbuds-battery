@@ -11,7 +11,7 @@
     <AssemblyName>RonghuiEarbuds.Setup</AssemblyName>
     <RootNamespace>RonghuiEarbuds.Setup</RootNamespace>
     <ApplicationIcon>..\..\assets\RonghuiEarbuds.ico</ApplicationIcon>
-    <Version>1.5.0</Version>
+    <Version>1.5.1</Version>
   </PropertyGroup>
 
   <ItemGroup>

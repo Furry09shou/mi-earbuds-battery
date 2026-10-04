@@ -336,16 +336,6 @@ public partial class MainWindow : Window
 
     // ---------- 系统电量兜底（HFP/AVRCP 上报，蓝牙设置页同源） ----------
 
-    /// <summary>
-    /// 系统电量兜底行从隐藏变为显示时触发：耳机连接电脑播放期间广播停止，
-    /// 拿不到广播帧，App 层借此弹出「整机电量」气泡（与开盖广播气泡同一冷却）。
-    /// </summary>
-    public event Action<int>? SystemBatteryAppeared;
-    private bool _sysBatteryShown;
-
-    /// <summary>当前关注设备名（供 App 层弹气泡显示标题）。</summary>
-    public string? ActiveDeviceName => _active?.Name;
-
     /// <summary>每 15 秒读一次当前设备的系统级电量，广播暂停/未适配时兜底显示。</summary>
     private void ProbeSystemBattery()
     {
@@ -372,16 +362,10 @@ public partial class MainWindow : Window
                 ? $"系统电量 {lv}% · 放入充电仓重新开盖可刷新"
                 : $"系统电量 {lv}%（未适配机型，整机电量）";
             SystemBatteryText.Visibility = Visibility.Visible;
-            if (!_sysBatteryShown)
-            {
-                _sysBatteryShown = true;
-                SystemBatteryAppeared?.Invoke(lv);
-            }
         }
         else
         {
             SystemBatteryText.Visibility = Visibility.Collapsed;
-            _sysBatteryShown = false;
         }
     }
 
