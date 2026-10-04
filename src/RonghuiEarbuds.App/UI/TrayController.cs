@@ -44,9 +44,6 @@ public sealed class TrayController : IDisposable
         watcher.DeviceBound += name =>
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
                 ShowBalloon($"已绑定 {name}", "打开充电仓盖即可查看电量"));
-
-        watcher.UpdateReceived += _ =>
-            System.Windows.Application.Current.Dispatcher.Invoke(RefreshFromLast);
     }
 
     private EarbudsUpdate? _last;
@@ -82,7 +79,9 @@ public sealed class TrayController : IDisposable
         SetIcon(display);
 
         string? fmt(int? v) => v is null ? "--" : v.Value.ToString();
-        var tip = $"Mi Air2 SE\n左耳 {fmt(s.LeftPercent)}%   右耳 {fmt(s.RightPercent)}%\n充电仓 {fmt(s.CasePercent)}%";
+        var name = _last?.DisplayName;
+        if (string.IsNullOrWhiteSpace(name)) name = "耳机";
+        var tip = $"{name}\n左耳 {fmt(s.LeftPercent)}%   右耳 {fmt(s.RightPercent)}%\n充电仓 {fmt(s.CasePercent)}%";
         _icon.Text = tip.Length <= 63 ? tip : tip[..63];
 
         int? lowest = MinOrNull(s.LeftPercent, s.RightPercent, s.CasePercent);

@@ -21,23 +21,20 @@ public partial class MainWindow : Window
     private bool _lastAlive = true;
 
     private bool _initialized;
-    private DateTime _lastSeen = DateTime.MinValue;
-    private string _mac = "";
-    private int? _rssi;
 
-    // 抖动抑制：充电触点瞬态会造成个别字段跳变，跳变过大时先压住
-    private (int Value, DateTime Time, int Suppressed)? _lastLeft;
-    private (int Value, DateTime Time, int Suppressed)? _lastRight;
-    private (int Value, DateTime Time, int Suppressed)? _lastCase;
+    // 多设备：MAC → 观测状态（本会话内出现过的所有已识别设备）
+    private readonly Dictionary<string, DeviceState> _devices = new(StringComparer.OrdinalIgnoreCase);
+    private DeviceState? _active;
 
-    // 最近一次有效帧的在仓状态（无效帧期间保持显示）
-    private bool? _lastLeftInCase;
-    private bool? _lastRightInCase;
+    /// <summary>当前面板正在显示的设备 MAC（托盘提示只对该设备弹出）。</summary>
+    public string? ActiveMac => _active?.Mac;
 
     // 检查到的新版本（再点一次按钮打开下载页）
     private UpdateInfo? _updateInfo;
 
     private const double StaleAfterSeconds = 8;
+    // 设备切换列表只显示 10 分钟内见过的设备（避免路人耳机长期滞留）
+    private static readonly TimeSpan DeviceListWindow = TimeSpan.FromMinutes(10);
     private const int JumpThreshold = 25;
     private static readonly TimeSpan JumpWindow = TimeSpan.FromSeconds(3);
 
@@ -45,6 +42,21 @@ public partial class MainWindow : Window
     private static readonly Color MidColor = Color.FromRgb(0xD9, 0xA1, 0x3B);
     private static readonly Color LowColor = Color.FromRgb(0xD9, 0x6A, 0x5B);
     private static readonly Color UnknownColor = Color.FromRgb(0x4A, 0x4A, 0x52);
+
+    /// <summary>单台设备本会话内的观测状态。</summary>
+    private sealed class DeviceState
+    {
+        public required string Mac { get; init; }
+        public string Name = "";
+        public DateTime LastSeen = DateTime.MinValue;
+        public int? Rssi;
+
+        // 抖动抑制：充电触点瞬态会造成个别字段跳变，跳变过大时先压住
+        public (int Value, DateTime Time, int Suppressed)? Left, Right, Case;
+
+        // 最近一次有效帧的在仓状态（无效帧期间保持显示）
+        public bool? LeftInCase, RightInCase;
+    }
 
     public MainWindow(EarbudsWatcher watcher, AppConfig config,
         Action<EarbudsUpdate>? onUpdateApplied = null, Action<bool>? onAliveChanged = null)
@@ -78,33 +90,56 @@ public partial class MainWindow : Window
 
     private void ApplyUpdate(EarbudsUpdate u)
     {
-        _lastSeen = u.Timestamp;
-        _mac = u.Mac;
-        _rssi = u.Rssi;
+        var st = GetOrAdd(u.Mac);
+        st.LastSeen = u.Timestamp;
+        st.Rssi = u.Rssi;
         var s = u.Snapshot;
-
-        DeviceNameText.Text = "Mi Air2 SE";
-        MacText.Text = u.Mac;
+        if (st.Name.Length == 0)
+            st.Name = string.IsNullOrWhiteSpace(u.DisplayName) ? u.Mac : u.DisplayName;
 
         // 电量值（带抖动过滤；null 表示本帧无效，维持旧显示）
-        ApplyRing(LeftRing, Filter(ref _lastLeft, s.LeftPercent));
-        ApplyRing(RightRing, Filter(ref _lastRight, s.RightPercent));
-        ApplyRing(CaseRing, Filter(ref _lastCase, s.CasePercent));
+        var left = Filter(ref st.Left, s.LeftPercent);
+        var right = Filter(ref st.Right, s.RightPercent);
+        var cse = Filter(ref st.Case, s.CasePercent);
 
-        // 在仓状态与状态文字：只在收到有效值时更新，避免噪声帧闪烁
-        if (s.LeftPercent is not null) _lastLeftInCase = s.LeftInCase;
-        if (s.RightPercent is not null) _lastRightInCase = s.RightInCase;
+        // 在仓状态：只在收到有效值时更新，避免噪声帧闪烁
+        if (s.LeftPercent is not null) st.LeftInCase = s.LeftInCase;
+        if (s.RightPercent is not null) st.RightInCase = s.RightInCase;
 
-        LeftStatusText.Text = InCaseText(_lastLeftInCase);
-        RightStatusText.Text = InCaseText(_lastRightInCase);
-        LeftBolt.Visibility = _lastLeftInCase == true ? Visibility.Visible : Visibility.Collapsed;
-        RightBolt.Visibility = _lastRightInCase == true ? Visibility.Visible : Visibility.Collapsed;
-        CaseStatusText.Text = s.CasePercent is null
-            ? CaseStatusText.Text
-            : $"电量 {s.CasePercent}%";
+        if (_active is null)
+            SetActive(st);   // 第一台设备自动选中
+
+        if (!ReferenceEquals(st, _active))
+        {
+            UpdateSwitcherVisibility();
+            return;          // 非当前设备：只记录状态，不渲染
+        }
+
+        ApplyRing(LeftRing, left);
+        ApplyRing(RightRing, right);
+        ApplyRing(CaseRing, cse);
 
         RefreshAliveState();
         _onUpdateApplied?.Invoke(u);
+    }
+
+    private DeviceState GetOrAdd(string mac)
+    {
+        if (!_devices.TryGetValue(mac, out var st))
+            _devices[mac] = st = new DeviceState { Mac = mac };
+        return st;
+    }
+
+    /// <summary>切换当前显示的设备，立即按该设备状态重绘。</summary>
+    private void SetActive(DeviceState st)
+    {
+        _active = st;
+        DeviceNameText.Text = st.Name.Length > 0 ? st.Name : "正在识别…";
+        MacText.Text = st.Mac;
+        SetRingInstant(LeftRing, st.Left);
+        SetRingInstant(RightRing, st.Right);
+        SetRingInstant(CaseRing, st.Case);
+        RefreshAliveState();
     }
 
     private static string InCaseText(bool? inCase) => inCase switch
@@ -155,11 +190,12 @@ public partial class MainWindow : Window
 
     private void RefreshAliveState()
     {
+        var st = _active;
         // 断开判定：广播新鲜 OR 系统蓝牙仍保持连接（合盖后广播立停，但系统
         // ACL 会保持几秒；两者都失去才算断开，避免慢判/误判）
-        bool fresh = (DateTime.Now - _lastSeen).TotalSeconds <= StaleAfterSeconds;
-        bool hasData = _lastSeen != DateTime.MinValue;
-        bool systemConnected = hasData && !fresh && BtConnectionProbe.IsConnected(_mac);
+        bool hasData = st is not null && st.LastSeen != DateTime.MinValue;
+        bool fresh = hasData && (DateTime.Now - st!.LastSeen).TotalSeconds <= StaleAfterSeconds;
+        bool systemConnected = hasData && !fresh && BtConnectionProbe.IsConnected(st!.Mac);
         bool alive = fresh || systemConnected;
 
         LiveDot.Fill = new SolidColorBrush(alive ? GoodColor : UnknownColor);
@@ -169,11 +205,30 @@ public partial class MainWindow : Window
             ? "请打开充电仓盖"
             : alive
                 ? fresh
-                    ? $"实时更新 · 信号 {_rssi} dBm"
+                    ? $"实时更新 · 信号 {st!.Rssi} dBm"
                     : "蓝牙保持连接 · 等待新广播"
                 : "信号丢失 · 请打开仓盖刷新电量";
 
         CardsGrid.Opacity = hasData && !alive ? 0.45 : 1.0;
+
+        if (hasData)
+        {
+            // 通道级离线只在广播新鲜时判定：广播停了可能只是合盖，
+            // 不能据此说某只耳机离线
+            RenderChannel(LeftCard, LeftStatusText, LeftBolt, st!.Left, st.LeftInCase, fresh);
+            RenderChannel(RightCard, RightStatusText, RightBolt, st.Right, st.RightInCase, fresh);
+
+            if (st.Case is { } c)
+            {
+                bool caseOnline = !fresh || (DateTime.Now - c.Time).TotalSeconds <= StaleAfterSeconds;
+                CaseCard.Opacity = caseOnline ? 1.0 : 0.45;
+                CaseStatusText.Text = caseOnline ? $"电量 {c.Value}%" : "离线";
+            }
+            else
+            {
+                CaseCard.Opacity = 1.0;
+            }
+        }
 
         if (!hasData || !alive)
             CaseStatusText.Text = "等待广播";
@@ -183,6 +238,44 @@ public partial class MainWindow : Window
         {
             _lastAlive = alive;
             _onAliveChanged?.Invoke(alive);
+        }
+
+        UpdateSwitcherVisibility();
+    }
+
+    /// <summary>
+    /// 单通道渲染：从未见过有效值保持未知态（"--"，不算离线）；
+    /// 广播新鲜但该通道长期无有效值 = 只有这一路离线，单独灰显。
+    /// </summary>
+    private static void RenderChannel(Border card, TextBlock status, System.Windows.Shapes.Path bolt,
+        (int Value, DateTime Time, int Suppressed)? state, bool? inCase, bool judgeOffline)
+    {
+        if (state is null)
+        {
+            card.Opacity = 1.0;
+            status.Text = "--";
+            bolt.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        bool online = !judgeOffline ||
+                      (DateTime.Now - state.Value.Time).TotalSeconds <= StaleAfterSeconds;
+        card.Opacity = online ? 1.0 : 0.45;
+        status.Text = online ? InCaseText(inCase) : "离线";
+        bolt.Visibility = online && inCase == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static void SetRingInstant(BatteryRing ring, (int Value, DateTime Time, int Suppressed)? state)
+    {
+        if (state is { } s)
+        {
+            ring.RingColor = ColorFor(s.Value);
+            ring.SetInstant(s.Value);
+        }
+        else
+        {
+            ring.SetInstant(-1);
+            ring.RingColor = UnknownColor;
         }
     }
 
@@ -231,18 +324,86 @@ public partial class MainWindow : Window
     private void RebindButton_Click(object sender, RoutedEventArgs e)
     {
         _watcher.Unbind();
-        _lastSeen = DateTime.MinValue;        _lastLeft = _lastRight = _lastCase = null;
-        _lastLeftInCase = _lastRightInCase = null;
-        _rssi = null;
+        _devices.Clear();
+        _active = null;
+        DevicePopup.IsOpen = false;
 
         DeviceNameText.Text = "正在搜索…";
         MacText.Text = "";
-        LeftRing.SetInstant(-1); LeftRing.RingColor = UnknownColor;
-        RightRing.SetInstant(-1); RightRing.RingColor = UnknownColor;
-        CaseRing.SetInstant(-1); CaseRing.RingColor = UnknownColor;
+        SetRingInstant(LeftRing, null);
+        SetRingInstant(RightRing, null);
+        SetRingInstant(CaseRing, null);
         LeftBolt.Visibility = RightBolt.Visibility = Visibility.Collapsed;
         LeftStatusText.Text = RightStatusText.Text = CaseStatusText.Text = "--";
+        LeftCard.Opacity = RightCard.Opacity = CaseCard.Opacity = 1.0;
+        CardsGrid.Opacity = 1.0;
+        UpdateSwitcherVisibility();
         RefreshAliveState();
+    }
+
+    // ---------- 多设备切换 ----------
+
+    private List<DeviceState> RecentDevices() =>
+        _devices.Values
+            .Where(d => ReferenceEquals(d, _active) ||
+                        DateTime.Now - d.LastSeen <= DeviceListWindow)
+            .OrderByDescending(d => d.LastSeen)
+            .ToList();
+
+    private void UpdateSwitcherVisibility()
+    {
+        bool show = RecentDevices().Count >= 2;
+        DeviceSwitchButton.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show && DevicePopup.IsOpen) DevicePopup.IsOpen = false;
+    }
+
+    private void DeviceSwitchButton_Click(object sender, RoutedEventArgs e)
+    {
+        DeviceList.ItemsSource = RecentDevices().Select(d => new DeviceOption
+        {
+            Mac = d.Mac,
+            Name = d.Name.Length > 0 ? d.Name : d.Mac,
+            Summary = Summarize(d),
+            IsCurrent = ReferenceEquals(d, _active),
+            Online = DateTime.Now - d.LastSeen <= TimeSpan.FromSeconds(StaleAfterSeconds),
+        }).ToList();
+        DevicePopup.IsOpen = true;
+    }
+
+    private void DeviceOption_Click(object sender, RoutedEventArgs e)
+    {
+        DevicePopup.IsOpen = false;
+        if (((Button)sender).Tag is DeviceOption opt &&
+            _devices.TryGetValue(opt.Mac, out var st))
+        {
+            _watcher.SelectDevice(opt.Mac);
+            SetActive(st);
+        }
+    }
+
+    private static string Summarize(DeviceState d)
+    {
+        string part((int Value, DateTime Time, int Suppressed)? s) =>
+            s is null ? "--"
+            : DateTime.Now - s.Value.Time <= TimeSpan.FromSeconds(StaleAfterSeconds)
+                ? $"{s.Value.Value}%"
+                : "离线";
+        return $"左 {part(d.Left)} · 右 {part(d.Right)} · 仓 {part(d.Case)}";
+    }
+
+    /// <summary>设备切换列表中的一行。</summary>
+    private sealed class DeviceOption
+    {
+        public required string Mac { get; init; }
+        public required string Name { get; init; }
+        public required string Summary { get; init; }
+        public required bool IsCurrent { get; init; }
+        public required bool Online { get; init; }
+
+        public System.Windows.Media.Brush Dot =>
+            new SolidColorBrush(Online ? GoodColor : UnknownColor);
+        public string Badge => IsCurrent ? "当前" : "";
+        public Visibility BadgeVisibility => IsCurrent ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void AutoStartCheck_Changed(object sender, RoutedEventArgs e)
@@ -316,7 +477,7 @@ public partial class MainWindow : Window
     private const string LayoutDualNoCase = "dual_nocase";
     private const string LayoutMono = "mono";
 
-    // 双耳（含充电仓不广播电量的形态——物理动作相同，只是没有仓电量字段）
+    // 双耳 + 充电仓（仓也广播电量的常见真无线）
     private static readonly (string Title, string Detail)[] StepsDual =
     {
         ("双耳入仓，开盖等 10 秒", "把两只耳机都放回充电仓，保持仓盖打开，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。"),
@@ -326,14 +487,24 @@ public partial class MainWindow : Window
         ("右耳放回，完成采集", "把右耳放回仓内，等待约 10 秒，然后点击「完成并上传」。"),
     };
 
-    // 单耳：没有左右之分，改为观察"入盒/取出/使用"的差别
+    // 仅双耳（无充电仓）：动作用开关机代替入仓取仓，同样制造左右差分
+    private static readonly (string Title, string Detail)[] StepsDualNoCase =
+    {
+        ("双耳开机，靠近电脑等 10 秒", "把两只耳机都打开电源，放在电脑旁边，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。这类耳机没有充电仓，全程无需入仓，只关注左右两只耳机。"),
+        ("关闭左耳，等 10 秒", "把左耳关机（右耳保持开机），等待约 10 秒。"),
+        ("打开左耳，等 10 秒", "把左耳重新开机，恢复双耳同开，等待约 10 秒。"),
+        ("关闭右耳，等 10 秒", "把右耳关机（左耳保持开机），等待约 10 秒。"),
+        ("打开右耳，完成采集", "把右耳重新开机，双耳同开等待约 10 秒，然后点击「完成并上传」。数据应只有左右耳两个电量字段，没有充电仓电量。"),
+    };
+
+    // 仅单耳（无充电仓）：只有一只耳机，观察开机/使用/静置/重启的状态差别
     private static readonly (string Title, string Detail)[] StepsMono =
     {
-        ("耳机入盒，开盖等 10 秒", "把耳机放回充电盒，保持盒盖打开，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。"),
-        ("取出耳机，等 10 秒", "把耳机从盒中取出，等待约 10 秒。"),
-        ("戴上使用，等 10 秒", "戴上耳机正常使用（或开机静置），等待约 10 秒。"),
-        ("放回盒内，等 10 秒", "把耳机放回盒内，等待约 10 秒。"),
-        ("再取出，完成采集", "再次取出耳机，等待约 10 秒，然后点击「完成并上传」。"),
+        ("开机，靠近电脑等 10 秒", "打开耳机电源，放在电脑旁边，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。这类耳机没有充电仓，全程只需关注这一只耳机的数据。"),
+        ("戴上使用，等 10 秒", "戴上耳机正常使用（播放或暂停都可以），等待约 10 秒。"),
+        ("摘下静置，等 10 秒", "把耳机摘下来放在桌上（保持开机），等待约 10 秒。"),
+        ("再戴上，等 10 秒", "再次戴上耳机使用，等待约 10 秒。"),
+        ("重启耳机，完成采集", "把耳机关机，等约 5 秒后重新开机，再等待约 10 秒，然后点击「完成并上传」。"),
     };
 
     private readonly CaptureService _capture = new();
@@ -343,8 +514,12 @@ public partial class MainWindow : Window
     private int _captureShown = -1;
     private Border[]? _dots;
 
-    private (string Title, string Detail)[] CurrentSteps() =>
-        _layout == LayoutMono ? StepsMono : StepsDual;
+    private (string Title, string Detail)[] CurrentSteps() => _layout switch
+    {
+        LayoutMono => StepsMono,
+        LayoutDualNoCase => StepsDualNoCase,
+        _ => StepsDual,
+    };
 
     private string SelectedLayout() =>
         LayoutOptionDualNoCase.IsChecked == true ? LayoutDualNoCase :

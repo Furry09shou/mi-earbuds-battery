@@ -72,8 +72,8 @@ public sealed class CaptureService : IDisposable
     /// <summary>耳机形态的显示名（dual_case / dual_nocase / mono）。</summary>
     public static string LayoutLabel(string layout) => layout switch
     {
-        "dual_nocase" => "双耳（充电仓不广播电量）",
-        "mono" => "仅单耳",
+        "dual_nocase" => "仅双耳（无充电仓）",
+        "mono" => "仅单耳（无充电仓）",
         "dual_case" => "双耳 + 充电仓",
         "" => "未记录",
         _ => layout,

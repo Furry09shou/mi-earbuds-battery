@@ -5,8 +5,8 @@ namespace RonghuiEarbuds.App.Core;
 
 /// <summary>
 /// 被动监听耳机 BLE 广播（不限品牌，解析档案见 XiaomiAdvParser.Profiles），
-/// 自动绑定第一台出现在附近的目标设备，
-/// 之后仅把该设备的解析结果对外推送。
+/// 把所有识别到的设备的解析结果对外推送（多设备场景由界面选择关注哪台）；
+/// 尚无关注设备时，自动绑定第一台信号足够的设备。
 /// </summary>
 public sealed class EarbudsWatcher : IDisposable
 {
@@ -48,6 +48,15 @@ public sealed class EarbudsWatcher : IDisposable
         _config.Save();
     }
 
+    /// <summary>多设备场景：手动切换关注的设备并持久化。</summary>
+    public void SelectDevice(string mac)
+    {
+        BoundMac = mac;
+        _config.BoundMac = mac;
+        _config.Save();
+        DiagLog($"切换关注设备 {mac}");
+    }
+
     private void OnReceived(BluetoothLEAdvertisementWatcher sender,
         BluetoothLEAdvertisementReceivedEventArgs args)
     {
@@ -56,20 +65,17 @@ public sealed class EarbudsWatcher : IDisposable
 
         var mac = FormatMac(args.BluetoothAddress);
 
-        if (BoundMac is null)
+        // 尚无关注设备时，自动绑定第一台信号足够的设备（避免绑到邻居耳机）
+        if (BoundMac is null && args.RawSignalStrengthInDBm >= AutoBindMinRssi)
         {
-            if (args.RawSignalStrengthInDBm < AutoBindMinRssi) return;
             BoundMac = mac;
             DiagLog($"绑定设备 {mac} ({snapshot.ProductKey})");
             DeviceBound?.Invoke(XiaomiAdvParser.GetDisplayName(snapshot.ProductKey));
         }
-        else if (!string.Equals(mac, BoundMac, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
 
         UpdateReceived?.Invoke(new EarbudsUpdate(
-            mac, args.RawSignalStrengthInDBm, snapshot, DateTime.Now));
+            mac, args.RawSignalStrengthInDBm, snapshot, DateTime.Now,
+            XiaomiAdvParser.GetDisplayName(snapshot.ProductKey)));
     }
 
     internal static void DiagLog(string message)

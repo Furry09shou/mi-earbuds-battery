@@ -9,5 +9,7 @@ public sealed record BatterySnapshot(
     bool RightInCase,
     string ProductKey);
 
-/// <summary>一次广播更新（已绑定设备）。</summary>
-public sealed record EarbudsUpdate(string Mac, int Rssi, BatterySnapshot Snapshot, DateTime Timestamp);
+/// <summary>一次广播更新（已识别设备）。</summary>
+public sealed record EarbudsUpdate(
+    string Mac, int Rssi, BatterySnapshot Snapshot, DateTime Timestamp,
+    string? DisplayName = null);

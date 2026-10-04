@@ -87,6 +87,24 @@
                             <TextBlock x:Name="DeviceNameText" Text="正在搜索…" Margin="8,0,0,0"
                                        FontSize="17" FontWeight="SemiBold" Foreground="#EDEDF0"
                                        VerticalAlignment="Center"/>
+                            <Button x:Name="DeviceSwitchButton" Visibility="Collapsed"
+                                    VerticalAlignment="Center" Margin="4,0,0,0" Cursor="Hand"
+                                    Click="DeviceSwitchButton_Click" ToolTip="切换显示的耳机">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Row" Background="Transparent" CornerRadius="6"
+                                                Padding="5,2">
+                                            <TextBlock Text="&#xE70D;" FontFamily="Segoe MDL2 Assets"
+                                                       FontSize="10" Foreground="#8F8F98"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Row" Property="Background" Value="#26262D"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
                         </StackPanel>
                         <TextBlock x:Name="StateText" Margin="16,4,0,0" FontSize="11.5"
                                    Foreground="#8F8F98" Text="请打开充电仓盖"/>
@@ -94,6 +112,57 @@
                     <TextBlock x:Name="MacText" Grid.Column="1" VerticalAlignment="Top" Margin="0,4,0,0"
                                FontSize="10.5" Foreground="#5C5C66" Text=""/>
                 </Grid>
+
+                <!-- 多设备切换弹层 -->
+                <Popup x:Name="DevicePopup" PlacementTarget="{Binding ElementName=DeviceSwitchButton}"
+                       Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                       PopupAnimation="Fade" VerticalOffset="4">
+                    <Border Background="#1C1C21" BorderBrush="#3A3A42" BorderThickness="1"
+                            CornerRadius="10" Padding="6" MinWidth="236">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.45"/>
+                        </Border.Effect>
+                        <ItemsControl x:Name="DeviceList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Click="DeviceOption_Click" Cursor="Hand" Tag="{Binding}"
+                                            HorizontalContentAlignment="Stretch">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="Row" Background="Transparent"
+                                                        CornerRadius="7" Padding="10,7" Margin="0,0,0,2">
+                                                    <StackPanel>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Ellipse Width="7" Height="7"
+                                                                     VerticalAlignment="Center"
+                                                                     Fill="{Binding Dot}"/>
+                                                            <TextBlock Text="{Binding Name}" Margin="8,0,0,0"
+                                                                       FontSize="12.5" FontWeight="SemiBold"
+                                                                       Foreground="#EDEDF0"
+                                                                       VerticalAlignment="Center"/>
+                                                            <TextBlock Text="{Binding Badge}" Margin="8,0,0,0"
+                                                                       FontSize="10" Foreground="#E87A3E"
+                                                                       VerticalAlignment="Center"
+                                                                       Visibility="{Binding BadgeVisibility}"/>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Summary}" Margin="15,2,0,0"
+                                                                   FontSize="10.5" Foreground="#8F8F98"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Row" Property="Background"
+                                                                Value="#26262D"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                </Popup>
 
                 <!-- 电量卡片 -->
                 <Grid x:Name="CardsGrid" Grid.Row="2" Margin="20,0,20,14">
@@ -279,14 +348,14 @@
                                          Content="双耳 + 充电仓（常见真无线）" FontSize="12.5"
                                          Foreground="#EDEDF0" Margin="0,3,0,0"/>
                             <RadioButton x:Name="LayoutOptionDualNoCase" GroupName="DeviceLayout"
-                                         Content="双耳，充电仓不广播电量" FontSize="12.5"
+                                         Content="仅双耳，无充电仓" FontSize="12.5"
                                          Foreground="#EDEDF0" Margin="0,3,0,0"/>
                             <RadioButton x:Name="LayoutOptionMono" GroupName="DeviceLayout"
-                                         Content="仅单耳耳机" FontSize="12.5"
+                                         Content="仅单耳耳机，无充电仓" FontSize="12.5"
                                          Foreground="#EDEDF0" Margin="0,3,0,0"/>
                         </StackPanel>
                         <TextBlock TextWrapping="Wrap" FontSize="10.5" Foreground="#5C5C66" Margin="0,8,0,0"
-                                   Text="形态决定采集动作与电量字段数量（单耳没有左右之分，部分耳机无仓电量）。选择会随数据一起提交，帮助开发者正确识别布局。"/>
+                                   Text="形态决定采集动作与电量字段数量（单耳没有左右之分；无仓形态不会出现充电仓电量字段）。选择会随数据一起提交，帮助开发者正确识别布局。"/>
                     </StackPanel>
 
                     <!-- 向导页 1-5：动作步骤 -->

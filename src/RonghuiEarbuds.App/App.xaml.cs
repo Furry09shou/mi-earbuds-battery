@@ -71,6 +71,7 @@ public partial class App : Application
             var quiet = now - lastDataAt > TimeSpan.FromSeconds(30);
             lastDataAt = now;
             if (_window is { IsVisible: true }) return;
+            if (u.Mac != _window?.ActiveMac) return;   // 多设备：只提示当前关注的设备
             if (!quiet || now - lastToastAt < TimeSpan.FromMinutes(5)) return;
             lastToastAt = now;
             var toast = new ToastWindow(u.Snapshot, ShowMainWindow);

@@ -11,7 +11,7 @@
     <AssemblyName>RonghuiEarbuds</AssemblyName>
     <RootNamespace>RonghuiEarbuds.App</RootNamespace>
     <ApplicationIcon>..\..\assets\RonghuiEarbuds.ico</ApplicationIcon>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
   </PropertyGroup>
 
   <!-- WinForms 仅用于托盘，禁止其全局 using 污染 WPF 代码 -->
