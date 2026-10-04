@@ -18,6 +18,23 @@ internal static class SetupLogic
     public const string Publisher = "绒汇公共交通组织";
     public const string ExeName = "RonghuiEarbuds.exe";
     public const string RunValueName = "RonghuiEarbuds";
+
+    /// <summary>
+    /// 检测是否已安装 .NET 8+ 桌面运行时（主程序为框架依赖发布，缺它无法启动）。
+    /// 探测异常时返回 true（用户可能装在自定义路径，不误拦）。
+    /// </summary>
+    public static bool IsDotNetDesktopRuntimeInstalled()
+    {
+        try
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "dotnet", "shared", "Microsoft.WindowsDesktop.App");
+            if (!Directory.Exists(dir)) return false;
+            return Directory.GetDirectories(dir).Any(d =>
+                Version.TryParse(Path.GetFileName(d).Split('-')[0], out var v) && v.Major >= 8);
+        }
+        catch { return true; }
+    }
     public const string UninstallKeyPath =
         @"Software\Microsoft\Windows\CurrentVersion\Uninstall\RonghuiEarbuds";
 

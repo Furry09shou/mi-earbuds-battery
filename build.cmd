@@ -11,6 +11,7 @@ if errorlevel 1 (
 )
 
 echo [2/3] Publishing installer as single exe (embeds app payload)...
+REM framework-dependent：自包含单文件达 153MB（WPF 无法裁剪），改为依赖系统引导安装 .NET 运行时
 "%DOTNET%" publish "%ROOT%setup\RonghuiEarbuds.Setup" -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false -o "%ROOT%dist" --nologo -v q
 if errorlevel 1 (
     echo Installer publish FAILED.

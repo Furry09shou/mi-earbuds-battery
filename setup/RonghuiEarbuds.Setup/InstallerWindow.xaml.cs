@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -148,6 +149,24 @@ public partial class InstallerWindow : Window
 
     private void RunButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!SetupLogic.IsDotNetDesktopRuntimeInstalled())
+        {
+            var r = MessageBox.Show(this,
+                "未检测到 .NET 8 桌面运行时（绒汇耳机助手运行必需）。\n\n" +
+                "点击「是」打开微软官方下载页，安装运行时后即可正常使用；" +
+                "也可以稍后从开始菜单启动本程序。",
+                "需要 .NET 8 桌面运行时", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (r == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo(
+                        "https://dotnet.microsoft.com/zh-cn/download/dotnet/8.0/runtime")
+                    { UseShellExecute = true });
+                }
+                catch { /* 打开浏览器失败忽略 */ }
+            }
+        }
         try { SetupLogic.StartApp(_target); }
         catch { /* 启动失败忽略，程序可从快捷方式打开 */ }
         Close();
