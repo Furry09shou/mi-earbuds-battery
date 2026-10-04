@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -545,21 +546,31 @@ public partial class MainWindow : Window
             var model = ModelBox.Text.Trim();
             if (model.Length == 0) model = "未知型号";
             _capture.AddMarker("结束采集");
-            var (_, zip) = _capture.Export(model);
+            var (jsonl, zip) = _capture.Export(model);
+
+            // 本地差分分析：自动生成候选布局报告，随 Issue 一起提交
+            string analysis;
+            try { analysis = FormatAnalyzer.AnalyzeFile(jsonl); }
+            catch { analysis = "本地分析失败（数据仍完整保留，可人工分析）。"; }
+            var analysisPath = Path.ChangeExtension(jsonl, ".analysis.txt");
+            File.WriteAllText(analysisPath, analysis);
 
             var body = $"机型：{model}\n" +
                        $"采集时间：{DateTime.Now:yyyy-MM-dd HH:mm}\n" +
                        $"捕获包数：{_capture.Count}\n" +
                        $"产品标识：{string.Join(" / ", _capture.ProductKeys)}\n\n" +
-                       $"请把数据文件拖进评论（由应用内向导生成）：\n`{zip}`";
+                       $"### 本地差分分析报告\n```text\n{analysis}\n```\n\n" +
+                       $"请把数据文件（jsonl 与 zip）拖进评论（由应用内向导生成）：\n`{zip}`";
             var url = $"{IssueUrlBase}?title={Uri.EscapeDataString($"适配新耳机：{model}")}" +
                       $"&body={Uri.EscapeDataString(body)}";
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 
             MessageBox.Show(this,
-                $"采集完成，共 {_capture.Count} 包。\n\n数据已导出：\n{zip}\n\n" +
+                $"采集完成，共 {_capture.Count} 包。\n\n" +
+                $"本地分析已生成候选布局报告（{Path.GetFileName(analysisPath)}），" +
+                "已随 Issue 预填，通常无需人工逐包分析。\n\n" +
                 "浏览器已打开 GitHub Issue 页面，请把该 zip 文件拖进评论框提交。" +
-                "开发者分析广播格式后在解析器登记档案，随软件更新加入你的机型支持。",
+                "开发者复核后登记解析档案，随软件更新加入你的机型支持。",
                 "导出成功", MessageBoxButton.OK, MessageBoxImage.Information);
             _adapterRunning = false;
             _capture.Dispose();

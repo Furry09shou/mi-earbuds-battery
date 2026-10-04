@@ -63,7 +63,7 @@ public sealed class CaptureService : IDisposable
                 _lines.Add(
                     $"{{\"t\":\"{DateTime.Now:O}\",\"mac\":\"{mac}\",\"rssi\":{args.RawSignalStrengthInDBm}," +
                     $"\"cid\":{m.CompanyId},\"hex\":\"{hex}\"" +
-                    (productKey is null ? "" : $",\"pkey\":\"{productKey}\"") + "}}");
+                    (productKey is null ? "" : $",\"pkey\":\"{productKey}\"") + "}");
             }
         }
         Ticked?.Invoke();
