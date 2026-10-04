@@ -12,161 +12,334 @@
                       CornerRadius="0" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
 
+    <Window.Resources>
+        <Style x:Key="ModelBoxStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="#1C1C21"/>
+            <Setter Property="Foreground" Value="#5C5C66"/>
+            <Setter Property="CaretBrush" Value="#E87A3E"/>
+            <Setter Property="BorderBrush" Value="#3A3A42"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Style.Resources>
+                <Style TargetType="Border">
+                    <Setter Property="CornerRadius" Value="8"/>
+                </Style>
+            </Style.Resources>
+        </Style>
+        <Style x:Key="StepTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#EDEDF0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style x:Key="StepDetailStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Foreground" Value="#8F8F98"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </Window.Resources>
+
     <Border x:Name="RootBorder" CornerRadius="14" Background="#141417"
             BorderBrush="#2B2B31" BorderThickness="1">
         <Border.RenderTransform>
             <TranslateTransform x:Name="RootTranslate" Y="0"/>
         </Border.RenderTransform>
         <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="48"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
 
-            <!-- 标题栏 -->
-            <Grid Grid.Row="0" Background="Transparent" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <StackPanel Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="&#xE702;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                               Foreground="#E87A3E" VerticalAlignment="Center"/>
-                    <TextBlock Text="小米耳机电量" Margin="8,0,0,0" FontSize="13" FontWeight="SemiBold"
-                               Foreground="#EDEDF0" VerticalAlignment="Center"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                            VerticalAlignment="Center" Margin="0,0,10,0">
-                    <Button x:Name="MinButton" Style="{StaticResource TitleBarButton}"
-                            Content="&#xE921;" Click="MinButton_Click"/>
-                    <Button x:Name="CloseButton" Style="{StaticResource TitleBarButton}"
-                            Content="&#xE8BB;" Click="CloseButton_Click"/>
-                </StackPanel>
-            </Grid>
-
-            <!-- 设备信息头 -->
-            <Grid Grid.Row="1" Margin="20,2,20,12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="LiveDot" Width="8" Height="8" VerticalAlignment="Center"
-                                 Fill="#6FBF73"/>
-                        <TextBlock x:Name="DeviceNameText" Text="正在搜索…" Margin="8,0,0,0"
-                                   FontSize="17" FontWeight="SemiBold" Foreground="#EDEDF0"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                    <TextBlock x:Name="StateText" Margin="16,4,0,0" FontSize="11.5"
-                               Foreground="#8F8F98" Text="请打开充电仓盖"/>
-                </StackPanel>
-                <TextBlock x:Name="MacText" Grid.Column="1" VerticalAlignment="Top" Margin="0,4,0,0"
-                           FontSize="10.5" Foreground="#5C5C66" Text=""/>
-            </Grid>
-
-            <!-- 电量卡片 -->
-            <Grid x:Name="CardsGrid" Grid.Row="2" Margin="20,0,20,14">
+            <!-- ================= 主视图：电量面板 ================= -->
+            <Grid x:Name="MainView">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="48"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <Grid Grid.Row="0">
+                <!-- 标题栏 -->
+                <Grid Grid.Row="0" Background="Transparent" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                    <StackPanel Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE702;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                   Foreground="#E87A3E" VerticalAlignment="Center"/>
+                        <TextBlock Text="小米耳机电量" Margin="8,0,0,0" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="#EDEDF0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                VerticalAlignment="Center" Margin="0,0,10,0">
+                        <Button x:Name="MinButton" Style="{StaticResource TitleBarButton}"
+                                Content="&#xE921;" Click="MinButton_Click"/>
+                        <Button x:Name="CloseButton" Style="{StaticResource TitleBarButton}"
+                                Content="&#xE8BB;" Click="CloseButton_Click"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 设备信息头 -->
+                <Grid Grid.Row="1" Margin="20,2,20,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="12"/>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="LiveDot" Width="8" Height="8" VerticalAlignment="Center"
+                                     Fill="#6FBF73"/>
+                            <TextBlock x:Name="DeviceNameText" Text="正在搜索…" Margin="8,0,0,0"
+                                       FontSize="17" FontWeight="SemiBold" Foreground="#EDEDF0"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock x:Name="StateText" Margin="16,4,0,0" FontSize="11.5"
+                                   Foreground="#8F8F98" Text="请打开充电仓盖"/>
+                    </StackPanel>
+                    <TextBlock x:Name="MacText" Grid.Column="1" VerticalAlignment="Top" Margin="0,4,0,0"
+                               FontSize="10.5" Foreground="#5C5C66" Text=""/>
+                </Grid>
 
-                    <!-- 左耳 -->
-                    <Border x:Name="LeftCard" Style="{StaticResource CardBorder}">
+                <!-- 电量卡片 -->
+                <Grid x:Name="CardsGrid" Grid.Row="2" Margin="20,0,20,14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- 左耳 -->
+                        <Border x:Name="LeftCard" Style="{StaticResource CardBorder}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <ui:BatteryRing x:Name="LeftRing" Width="86" Height="86"
+                                                VerticalAlignment="Center" Level="-1"/>
+                                <StackPanel Grid.Column="1" Margin="12,0,2,0" VerticalAlignment="Center">
+                                    <TextBlock Text="左耳" FontSize="13.5" FontWeight="SemiBold"
+                                               Foreground="#EDEDF0"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <Path x:Name="LeftBolt" Visibility="Collapsed"
+                                              Data="M 7.2 0 L 0.8 8.4 L 4.6 8.4 L 3.6 15 L 10.4 5.6 L 6.4 5.6 Z"
+                                              Fill="#E8A33E" Stretch="Uniform" Width="10" Height="12"
+                                              VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="LeftStatusText" Margin="0,0,0,0" FontSize="11.5"
+                                                   Foreground="#8F8F98" Text="--" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- 右耳 -->
+                        <Border x:Name="RightCard" Grid.Column="2" Style="{StaticResource CardBorder}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <ui:BatteryRing x:Name="RightRing" Width="86" Height="86"
+                                                VerticalAlignment="Center" Level="-1"/>
+                                <StackPanel Grid.Column="1" Margin="12,0,2,0" VerticalAlignment="Center">
+                                    <TextBlock Text="右耳" FontSize="13.5" FontWeight="SemiBold"
+                                               Foreground="#EDEDF0"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <Path x:Name="RightBolt" Visibility="Collapsed"
+                                              Data="M 7.2 0 L 0.8 8.4 L 4.6 8.4 L 3.6 15 L 10.4 5.6 L 6.4 5.6 Z"
+                                              Fill="#E8A33E" Stretch="Uniform" Width="10" Height="12"
+                                              VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="RightStatusText" FontSize="11.5"
+                                                   Foreground="#8F8F98" Text="--" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!-- 充电仓 -->
+                    <Border x:Name="CaseCard" Grid.Row="1" Margin="0,12,0,0" Style="{StaticResource CardBorder}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <ui:BatteryRing x:Name="LeftRing" Width="86" Height="86"
-                                            VerticalAlignment="Center" Level="-1"/>
+                            <ui:BatteryRing x:Name="CaseRing" Width="86" Height="86" Level="-1"/>
                             <StackPanel Grid.Column="1" Margin="12,0,2,0" VerticalAlignment="Center">
-                                <TextBlock Text="左耳" FontSize="13.5" FontWeight="SemiBold"
+                                <TextBlock Text="充电仓" FontSize="13.5" FontWeight="SemiBold"
                                            Foreground="#EDEDF0"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <Path x:Name="LeftBolt" Visibility="Collapsed"
-                                          Data="M 7.2 0 L 0.8 8.4 L 4.6 8.4 L 3.6 15 L 10.4 5.6 L 6.4 5.6 Z"
-                                          Fill="#E8A33E" Stretch="Uniform" Width="10" Height="12"
-                                          VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="LeftStatusText" Margin="0,0,0,0" FontSize="11.5"
-                                               Foreground="#8F8F98" Text="--" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-
-                    <!-- 右耳 -->
-                    <Border x:Name="RightCard" Grid.Column="2" Style="{StaticResource CardBorder}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <ui:BatteryRing x:Name="RightRing" Width="86" Height="86"
-                                            VerticalAlignment="Center" Level="-1"/>
-                            <StackPanel Grid.Column="1" Margin="12,0,2,0" VerticalAlignment="Center">
-                                <TextBlock Text="右耳" FontSize="13.5" FontWeight="SemiBold"
-                                           Foreground="#EDEDF0"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <Path x:Name="RightBolt" Visibility="Collapsed"
-                                          Data="M 7.2 0 L 0.8 8.4 L 4.6 8.4 L 3.6 15 L 10.4 5.6 L 6.4 5.6 Z"
-                                          Fill="#E8A33E" Stretch="Uniform" Width="10" Height="12"
-                                          VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="RightStatusText" FontSize="11.5"
-                                               Foreground="#8F8F98" Text="--" VerticalAlignment="Center"/>
-                                </StackPanel>
+                                <TextBlock x:Name="CaseStatusText" Margin="0,6,0,0" FontSize="11.5"
+                                           Foreground="#8F8F98" Text="--"/>
+                                <TextBlock x:Name="CaseHintText" Margin="0,4,0,0" FontSize="10.5"
+                                           Foreground="#5C5C66" Text="开盖后可见"/>
                             </StackPanel>
                         </Grid>
                     </Border>
                 </Grid>
 
-                <!-- 充电仓 -->
-                <Border x:Name="CaseCard" Grid.Row="1" Margin="0,12,0,0" Style="{StaticResource CardBorder}">
+                <!-- 底栏 -->
+                <Border Grid.Row="3" BorderBrush="#232329" BorderThickness="0,1,0,0" Padding="20,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <ui:BatteryRing x:Name="CaseRing" Width="86" Height="86" Level="-1"/>
-                        <StackPanel Grid.Column="1" Margin="12,0,2,0" VerticalAlignment="Center">
-                            <TextBlock Text="充电仓" FontSize="13.5" FontWeight="SemiBold"
-                                       Foreground="#EDEDF0"/>
-                            <TextBlock x:Name="CaseStatusText" Margin="0,6,0,0" FontSize="11.5"
-                                       Foreground="#8F8F98" Text="--"/>
-                            <TextBlock x:Name="CaseHintText" Margin="0,4,0,0" FontSize="10.5"
-                                       Foreground="#5C5C66" Text="开盖后可见"/>
+                        <CheckBox x:Name="AutoStartCheck" Style="{StaticResource ToggleCheck}"
+                                  Content="开机自启" Checked="AutoStartCheck_Changed"
+                                  Unchecked="AutoStartCheck_Changed"/>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Button x:Name="UpdateButton" Style="{StaticResource GhostButton}"
+                                    Content="检查更新" Click="UpdateButton_Click"/>
+                            <Button x:Name="AdaptButton" Style="{StaticResource GhostButton}"
+                                    Content="适配名单" Margin="8,0,0,0" Click="AdaptButton_Click"/>
+                            <Button x:Name="RebindButton" Style="{StaticResource GhostButton}"
+                                    Content="重新绑定" Margin="8,0,0,0" Click="RebindButton_Click"/>
                         </StackPanel>
                     </Grid>
                 </Border>
             </Grid>
 
-            <!-- 底栏 -->
-            <Border Grid.Row="3" BorderBrush="#232329" BorderThickness="0,1,0,0" Padding="20,10">
-                <Grid>
+            <!-- ================= 适配视图：名单 + 分页向导（同窗口内跳转） ================= -->
+            <Grid x:Name="AdapterView" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="48"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- 标题栏 -->
+                <Grid Grid.Row="0" Background="Transparent" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                    <StackPanel Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE702;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                   Foreground="#E87A3E" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="AdapterTitle" Text="适配名单" Margin="8,0,0,0" FontSize="13"
+                                   FontWeight="SemiBold" Foreground="#EDEDF0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <Button HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"
+                            Style="{StaticResource TitleBarButton}" Content="&#xE8BB;"
+                            Click="CloseButton_Click"/>
+                </Grid>
+
+                <!-- 进度点 -->
+                <StackPanel x:Name="DotsRow" Grid.Row="1" Orientation="Horizontal"
+                            HorizontalAlignment="Center" Margin="0,0,0,4" Visibility="Collapsed"/>
+
+                <!-- 视图容器 -->
+                <Grid x:Name="AdapterViews" Grid.Row="2" Margin="20,0,20,0">
+                    <Grid.RenderTransform>
+                        <TranslateTransform x:Name="AdapterTranslate" Y="0"/>
+                    </Grid.RenderTransform>
+
+                    <!-- 名单页 -->
+                    <StackPanel x:Name="AdapterListPage">
+                        <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="#8F8F98"
+                                   Text="以下机型已完成协议适配，软件可实时显示电量。列表随版本更新持续增加。"/>
+                        <ItemsControl x:Name="ModelList" Margin="0,12,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#19191E" CornerRadius="8" Padding="12,9" Margin="0,0,0,8">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Width="20" Height="20" CornerRadius="10" Background="#243A28">
+                                                <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                                           Foreground="#6FBF73" HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="{Binding}" FontSize="12.5" FontWeight="SemiBold"
+                                                       Foreground="#EDEDF0" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                            <Border Background="#243A28" CornerRadius="5" Padding="7,2" Margin="10,0,0,0"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="已支持" FontSize="10" Foreground="#6FBF73"/>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="#8F8F98" Margin="0,4,0,0"
+                                   Text="没找到你的耳机？点右下角「适配新耳机」，按向导采集广播数据即可众包适配。"/>
+                    </StackPanel>
+
+                    <!-- 向导页 0：写入型号 -->
+                    <StackPanel x:Name="AdapterPage0" Visibility="Collapsed">
+                        <TextBlock Text="先写下耳机型号" FontSize="20" FontWeight="Bold" Foreground="#EDEDF0"/>
+                        <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="#8F8F98" Margin="0,8,0,0"
+                                   Text="你的耳机型号暂不受支持？按向导做几个简单动作，软件会记录耳机的广播数据。数据不含个人隐私，导出后上传到 GitHub 供开发者分析适配。"/>
+                        <TextBlock Text="耳机型号名称" FontSize="11.5" Foreground="#C9C9CF" Margin="0,14,0,6"/>
+                        <TextBox x:Name="ModelBox" Style="{StaticResource ModelBoxStyle}"
+                                 Text="例如：Redmi Buds 5"
+                                 GotFocus="ModelBox_GotFocus" LostFocus="ModelBox_LostFocus"/>
+                        <TextBlock x:Name="ModelHint" Text="请先填写耳机型号" FontSize="11" Foreground="#D96A5B"
+                                   Margin="2,6,0,0" Visibility="Collapsed"/>
+                    </StackPanel>
+
+                    <!-- 向导页 1-5：动作步骤 -->
+                    <StackPanel x:Name="AdapterPage1" Visibility="Collapsed">
+                        <TextBlock x:Name="StepNum1" Text="步骤 1 / 5" FontSize="11.5" Foreground="#E87A3E" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="StepTitle1" Style="{StaticResource StepTitleStyle}" Margin="0,8,0,0"/>
+                        <TextBlock x:Name="StepDetail1" Style="{StaticResource StepDetailStyle}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                    <StackPanel x:Name="AdapterPage2" Visibility="Collapsed">
+                        <TextBlock x:Name="StepNum2" Text="步骤 2 / 5" FontSize="11.5" Foreground="#E87A3E" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="StepTitle2" Style="{StaticResource StepTitleStyle}" Margin="0,8,0,0"/>
+                        <TextBlock x:Name="StepDetail2" Style="{StaticResource StepDetailStyle}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                    <StackPanel x:Name="AdapterPage3" Visibility="Collapsed">
+                        <TextBlock x:Name="StepNum3" Text="步骤 3 / 5" FontSize="11.5" Foreground="#E87A3E" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="StepTitle3" Style="{StaticResource StepTitleStyle}" Margin="0,8,0,0"/>
+                        <TextBlock x:Name="StepDetail3" Style="{StaticResource StepDetailStyle}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                    <StackPanel x:Name="AdapterPage4" Visibility="Collapsed">
+                        <TextBlock x:Name="StepNum4" Text="步骤 4 / 5" FontSize="11.5" Foreground="#E87A3E" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="StepTitle4" Style="{StaticResource StepTitleStyle}" Margin="0,8,0,0"/>
+                        <TextBlock x:Name="StepDetail4" Style="{StaticResource StepDetailStyle}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                    <StackPanel x:Name="AdapterPage5" Visibility="Collapsed">
+                        <TextBlock x:Name="StepNum5" Text="步骤 5 / 5" FontSize="11.5" Foreground="#E87A3E" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="StepTitle5" Style="{StaticResource StepTitleStyle}" Margin="0,8,0,0"/>
+                        <TextBlock x:Name="StepDetail5" Style="{StaticResource StepDetailStyle}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 实时捕获状态（采集动作页显示） -->
+                <Border x:Name="LiveBox" Grid.Row="2" VerticalAlignment="Bottom" Margin="20,0,20,12"
+                        Background="#19191E" CornerRadius="8" Padding="12,8" Visibility="Collapsed">
+                    <TextBlock x:Name="LiveText" FontSize="11" Foreground="#5C5C66" TextWrapping="Wrap"
+                               Text="等待开始采集…"/>
+                </Border>
+
+                <!-- 适配视图底栏 -->
+                <Grid Grid.Row="3" Margin="20,12,20,16">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <CheckBox x:Name="AutoStartCheck" Style="{StaticResource ToggleCheck}"
-                              Content="开机自启" Checked="AutoStartCheck_Changed"
-                              Unchecked="AutoStartCheck_Changed"/>
-                    <StackPanel Grid.Column="2" Orientation="Horizontal">
-                        <Button x:Name="UpdateButton" Style="{StaticResource GhostButton}"
-                                Content="检查更新" Click="UpdateButton_Click"/>
-                        <Button x:Name="AdaptButton" Style="{StaticResource GhostButton}"
-                                Content="适配名单" Margin="8,0,0,0" Click="AdaptButton_Click"/>
-                        <Button x:Name="RebindButton" Style="{StaticResource GhostButton}"
-                                Content="重新绑定" Margin="8,0,0,0" Click="RebindButton_Click"/>
-                    </StackPanel>
+                    <Button x:Name="AdapterBackButton" Style="{StaticResource GhostButton}" Content="取消"
+                            HorizontalAlignment="Left" Click="AdapterBackButton_Click"/>
+                    <Button x:Name="AdapterMainButton" Grid.Column="1" Click="AdapterMainButton_Click" Cursor="Hand"
+                            HorizontalAlignment="Right">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="B" Background="#E87A3E" CornerRadius="8" Padding="16,7">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="B" Property="Background" Value="#F08B4F"/>
+                                    </Trigger>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter TargetName="B" Property="Opacity" Value="0.5"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock x:Name="AdapterMainButtonText" Text="适配新耳机 ›" FontSize="12.5"
+                                   FontWeight="SemiBold" Foreground="#1A1A1A"/>
+                    </Button>
                 </Grid>
-            </Border>
+            </Grid>
         </Grid>
     </Border>
 </Window>

@@ -125,6 +125,7 @@ public partial class App : Application
     private void ExitApp()
     {
         _window?.PersistPosition(_config);
+        _window?.DisposeCapture();
         _config.Save();
         _tray?.Dispose();
         _watcher?.Dispose();

@@ -53,6 +53,8 @@ public partial class MainWindow : Window
 
         RestorePosition(config);
 
+        _capture.Ticked += () => Dispatcher.Invoke(RefreshCaptureLive);
+
         AutoStartCheck.IsChecked = AutoStartHelper.IsEnabled();
         _initialized = true;
 
@@ -288,10 +290,294 @@ public partial class MainWindow : Window
         timer.Start();
     }
 
-    private void AdaptButton_Click(object sender, RoutedEventArgs e)
+    private void AdaptButton_Click(object sender, RoutedEventArgs e) => ShowAdapterList(instant: false);
+
+    // ==================== 适配视图：名单 + 分页向导（窗口内跳转） ====================
+
+    private const string IssueUrlBase = "https://github.com/Furry09shou/mi-earbuds-battery/issues/new";
+    private const double MainViewHeight = 448;
+    private const double AdapterListHeight = 480;
+    private const double AdapterWizardHeight = 520;
+    private const string ModelPlaceholder = "例如：Redmi Buds 5";
+    private static readonly Color PlaceholderColor = Color.FromRgb(0x5C, 0x5C, 0x66);
+    private static readonly Color InputColor = Color.FromRgb(0xED, 0xED, 0xF0);
+
+    private static readonly (string Title, string Detail)[] AdapterSteps =
     {
-        new CaptureWindow { Owner = this }.ShowDialog();
+        ("双耳入仓，开盖等 10 秒", "把两只耳机都放回充电仓，保持仓盖打开，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。"),
+        ("取出左耳，等 10 秒", "把左耳从仓中取出（戴或不戴都可以），右耳留在仓内，等待约 10 秒。"),
+        ("左耳放回，等 10 秒", "把左耳放回仓内，等待约 10 秒。"),
+        ("取出右耳，等 10 秒", "把右耳从仓中取出，左耳留在仓内，等待约 10 秒。"),
+        ("右耳放回，完成采集", "把右耳放回仓内，等待约 10 秒，然后点击「完成并上传」。"),
+    };
+
+    private readonly CaptureService _capture = new();
+    private int _adapterPage = -1;      // -1=不在适配视图，0=型号页，1..5=动作步骤
+    private bool _adapterRunning;
+    private int _captureShown = -1;
+    private Border[]? _dots;
+
+    private void ShowAdapterList(bool instant)
+    {
+        _adapterPage = -1;
+        AdapterTitle.Text = "适配名单";
+        ModelList.ItemsSource = XiaomiAdvParser.GetSupportedNames();
+        ShowOnlyAdapterPage(AdapterListPage);
+        DotsRow.Visibility = Visibility.Collapsed;
+        LiveBox.Visibility = Visibility.Collapsed;
+        AdapterBackButton.Content = "取消";
+        AdapterMainButtonText.Text = "适配新耳机 ›";
+        AnimateWindowHeight(AdapterListHeight, instant);
+        AnimateAdapterView(instant);
     }
+
+    private void ShowAdapterPage(int page)
+    {
+        _adapterPage = page;
+        AdapterTitle.Text = "适配新耳机";
+
+        if (page >= 1)
+        {
+            // 步骤标题与详情
+            var (title, detail) = AdapterSteps[page - 1];
+            ((TextBlock)FindName($"StepTitle{page}")!).Text = title;
+            ((TextBlock)FindName($"StepDetail{page}")!).Text = detail;
+        }
+
+        ShowOnlyAdapterPage(page == 0 ? (UIElement)AdapterPage0 : (UIElement)FindName($"AdapterPage{page}")!);
+        DotsRow.Visibility = Visibility.Visible;
+        BuildAdapterDots(page);
+        LiveBox.Visibility = page >= 1 ? Visibility.Visible : Visibility.Collapsed;
+        AdapterBackButton.Content = _adapterRunning ? "取消" : "‹ 返回";
+        AdapterMainButtonText.Text = page switch
+        {
+            0 => "开始采集",
+            5 => "完成并上传",
+            _ => $"下一步（{page}/5）",
+        };
+        AnimateWindowHeight(AdapterWizardHeight, instant: false);
+        AnimateAdapterView(instant: false);
+    }
+
+    private void ShowOnlyAdapterPage(UIElement current)
+    {
+        MainView.Visibility = Visibility.Collapsed;
+        AdapterView.Visibility = Visibility.Visible;
+        AdapterListPage.Visibility = ReferenceEquals(current, AdapterListPage)
+            ? Visibility.Visible : Visibility.Collapsed;
+        for (var i = 0; i <= 5; i++)
+        {
+            var page = (UIElement)FindName($"AdapterPage{i}")!;
+            page.Visibility = ReferenceEquals(page, current) ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void ShowMainView()
+    {
+        _adapterPage = -1;
+        AdapterView.Visibility = Visibility.Collapsed;
+        MainView.Visibility = Visibility.Visible;
+        AnimateWindowHeight(MainViewHeight, instant: false);
+    }
+
+    private void BuildAdapterDots(int active)
+    {
+        if (_dots is null)
+        {
+            _dots = new Border[6];
+            for (var i = 0; i < 6; i++)
+            {
+                _dots[i] = new Border
+                {
+                    Width = 8,
+                    Height = 8,
+                    CornerRadius = new CornerRadius(4),
+                    Margin = new Thickness(4, 0, 4, 0),
+                };
+                DotsRow.Children.Add(_dots[i]);
+            }
+        }
+        for (var i = 0; i < 6; i++)
+        {
+            _dots[i].Background = new SolidColorBrush(i <= active
+                ? Color.FromRgb(0xE8, 0x7A, 0x3E)
+                : Color.FromRgb(0x3A, 0x3A, 0x42));
+        }
+    }
+
+    private void AnimateAdapterView(bool instant)
+    {
+        if (instant)
+        {
+            AdapterViews.Opacity = 1;
+            AdapterTranslate.Y = 0;
+            return;
+        }
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        AdapterViews.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease });
+        AdapterTranslate.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(14, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease });
+    }
+
+    private void AnimateWindowHeight(double target, bool instant)
+    {
+        // 底边固定：加高时上移 Top，避免底栏超出屏幕
+        var delta = target - ActualHeight;
+        var newTop = Math.Max(SystemParameters.WorkArea.Top, Top - delta);
+
+        if (instant || Math.Abs(Height - target) < 0.5)
+        {
+            Height = target;
+            Top = newTop;
+            return;
+        }
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        BeginAnimation(HeightProperty,
+            new DoubleAnimation(Height, target, TimeSpan.FromMilliseconds(220)) { EasingFunction = ease });
+        BeginAnimation(TopProperty,
+            new DoubleAnimation(Top, newTop, TimeSpan.FromMilliseconds(220)) { EasingFunction = ease });
+    }
+
+    private void AdapterBackButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_adapterPage < 0 || (_adapterPage == 0 && !_adapterRunning))
+        {
+            ShowMainView();
+            return;
+        }
+        TryCancelAdapter();
+    }
+
+    private void TryCancelAdapter()
+    {
+        if (!_adapterRunning)
+        {
+            ShowAdapterList(instant: false);
+            return;
+        }
+        if (MessageBox.Show(this, "采集进行中，确定取消并丢弃已采集的数据吗？", "适配新耳机",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+        _adapterRunning = false;
+        _capture.Dispose();
+        ShowMainView();
+    }
+
+    private void AdapterMainButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_adapterPage < 0)
+        {
+            ShowAdapterPage(0);
+            return;
+        }
+
+        if (_adapterPage == 0)
+        {
+            var model = ModelBox.Text.Trim();
+            if (model.Length == 0 || model == ModelPlaceholder)
+            {
+                ModelHint.Visibility = Visibility.Visible;
+                ModelBox.Focus();
+                return;
+            }
+            ModelHint.Visibility = Visibility.Collapsed;
+            _capture.Start();
+            _adapterRunning = true;
+            _capture.AddMarker("开始采集");
+            ShowAdapterPage(1);
+            return;
+        }
+
+        _capture.AddMarker($"完成阶段{_adapterPage}:{AdapterSteps[_adapterPage - 1].Title}");
+        if (_adapterPage < 5)
+        {
+            ShowAdapterPage(_adapterPage + 1);
+        }
+        else
+        {
+            FinishCapture();
+        }
+    }
+
+    private void RefreshCaptureLive()
+    {
+        if (_capture.Count == _captureShown) return;
+        _captureShown = _capture.Count;
+
+        var cids = _capture.CompanyIds.Count == 0
+            ? "—"
+            : string.Join(", ", _capture.CompanyIds.Select(c => $"0x{c:X4}"));
+        var keys = _capture.ProductKeys.Count == 0
+            ? "—"
+            : string.Join(" / ", _capture.ProductKeys);
+
+        LiveText.Text = _adapterRunning
+            ? $"已捕获 {_capture.Count} 包 · 公司代号: {cids} · 产品标识: {keys}"
+            : "等待开始采集…";
+    }
+
+    private void ModelBox_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (ModelBox.Text == ModelPlaceholder)
+        {
+            ModelBox.Text = "";
+            ModelBox.Foreground = new SolidColorBrush(InputColor);
+        }
+    }
+
+    private void ModelBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (ModelBox.Text.Trim().Length == 0)
+        {
+            ModelBox.Text = ModelPlaceholder;
+            ModelBox.Foreground = new SolidColorBrush(PlaceholderColor);
+        }
+    }
+
+    private void FinishCapture()
+    {
+        AdapterMainButton.IsEnabled = false;
+        try
+        {
+            var model = ModelBox.Text.Trim();
+            if (model.Length == 0) model = "未知型号";
+            _capture.AddMarker("结束采集");
+            var (_, zip) = _capture.Export(model);
+
+            var body = $"机型：{model}\n" +
+                       $"采集时间：{DateTime.Now:yyyy-MM-dd HH:mm}\n" +
+                       $"捕获包数：{_capture.Count}\n" +
+                       $"产品标识：{string.Join(" / ", _capture.ProductKeys)}\n\n" +
+                       $"请把数据文件拖进评论（由应用内向导生成）：\n`{zip}`";
+            var url = $"{IssueUrlBase}?title={Uri.EscapeDataString($"适配新耳机：{model}")}" +
+                      $"&body={Uri.EscapeDataString(body)}";
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+
+            MessageBox.Show(this,
+                $"采集完成，共 {_capture.Count} 包。\n\n数据已导出：\n{zip}\n\n" +
+                "浏览器已打开 GitHub Issue 页面，请把该 zip 文件拖进评论框提交。" +
+                "开发者分析广播格式后在解析器登记档案，随软件更新加入你的机型支持。",
+                "导出成功", MessageBoxButton.OK, MessageBoxImage.Information);
+            _adapterRunning = false;
+            _capture.Dispose();
+            ShowMainView();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"导出失败：{ex.Message}", "错误",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            AdapterMainButton.IsEnabled = true;
+        }
+    }
+
+    /// <summary>退出应用时释放采集器（App.ExitApp 调用）。</summary>
+    public void DisposeCapture() => _capture.Dispose();
 
     public void PersistPosition(AppConfig config)
     {
