@@ -157,8 +157,14 @@
                     <CheckBox x:Name="AutoStartCheck" Style="{StaticResource ToggleCheck}"
                               Content="开机自启" Checked="AutoStartCheck_Changed"
                               Unchecked="AutoStartCheck_Changed"/>
-                    <Button x:Name="RebindButton" Grid.Column="2" Style="{StaticResource GhostButton}"
-                            Content="重新绑定" Click="RebindButton_Click"/>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button x:Name="UpdateButton" Style="{StaticResource GhostButton}"
+                                Content="检查更新" Click="UpdateButton_Click"/>
+                        <Button x:Name="AdaptButton" Style="{StaticResource GhostButton}"
+                                Content="适配新耳机" Margin="8,0,0,0" Click="AdaptButton_Click"/>
+                        <Button x:Name="RebindButton" Style="{StaticResource GhostButton}"
+                                Content="重新绑定" Margin="8,0,0,0" Click="RebindButton_Click"/>
+                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>

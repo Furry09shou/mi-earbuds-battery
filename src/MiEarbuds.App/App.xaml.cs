@@ -64,6 +64,30 @@ public partial class App : Application
             _window.Hide();
         else
             ShowMainWindow();
+
+        _ = CheckUpdateDailyAsync();
+    }
+
+    /// <summary>每天最多静默检查一次 GitHub Releases 更新，有新版弹托盘气泡。</summary>
+    private async Task CheckUpdateDailyAsync()
+    {
+        if (_config.LastUpdateCheckUtc is { } last &&
+            DateTime.UtcNow - last < TimeSpan.FromHours(24))
+        {
+            return;
+        }
+        _config.LastUpdateCheckUtc = DateTime.UtcNow;
+        _config.Save();
+
+        try
+        {
+            var info = await UpdateChecker.CheckAsync();
+            if (info is null) return;
+            await Dispatcher.InvokeAsync(() => _tray?.ShowUpdateBalloon(
+                $"新版本 v{info.Version} 可用",
+                "点击此气泡打开下载页，或在主面板点“检查更新”", info.Url));
+        }
+        catch { /* 无网络/接口异常时静默跳过 */ }
     }
 
     private void ShowMainWindow()

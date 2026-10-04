@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -27,6 +28,9 @@ public partial class MainWindow : Window
     // 最近一次有效帧的在仓状态（无效帧期间保持显示）
     private bool? _lastLeftInCase;
     private bool? _lastRightInCase;
+
+    // 检查到的新版本（再点一次按钮打开下载页）
+    private UpdateInfo? _updateInfo;
 
     private const double StaleAfterSeconds = 8;
     private const int JumpThreshold = 25;
@@ -224,6 +228,59 @@ public partial class MainWindow : Window
     {
         if (!_initialized) return;
         AutoStartHelper.Set(AutoStartCheck.IsChecked == true);
+    }
+
+    private async void UpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        // 已检查到新版本：再次点击打开下载页
+        if (_updateInfo is { } info)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(info.Url) { UseShellExecute = true });
+            }
+            catch { /* 打开浏览器失败忽略 */ }
+            return;
+        }
+
+        UpdateButton.IsEnabled = false;
+        UpdateButton.Content = "检查中…";
+        try
+        {
+            var update = await UpdateChecker.CheckAsync();
+            if (update is null)
+            {
+                FlashUpdateButton("已是最新");
+            }
+            else
+            {
+                _updateInfo = update;
+                UpdateButton.IsEnabled = true;
+                UpdateButton.Content = $"新版本 v{update.Version} ↑";
+            }
+        }
+        catch
+        {
+            FlashUpdateButton("检查失败");
+        }
+    }
+
+    private void FlashUpdateButton(string text)
+    {
+        UpdateButton.Content = text;
+        UpdateButton.IsEnabled = true;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            UpdateButton.Content = "检查更新";
+        };
+        timer.Start();
+    }
+
+    private void AdaptButton_Click(object sender, RoutedEventArgs e)
+    {
+        new CaptureWindow { Owner = this }.ShowDialog();
     }
 
     public void PersistPosition(AppConfig config)

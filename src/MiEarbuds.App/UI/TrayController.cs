@@ -100,6 +100,28 @@ public sealed class TrayController : IDisposable
     public void ShowBalloon(string title, string message) =>
         _icon.ShowBalloonTip(3000, title, message, WinForms.ToolTipIcon.Info);
 
+    private string? _balloonUrl;
+
+    /// <summary>更新提醒气泡：点击气泡打开下载页。</summary>
+    public void ShowUpdateBalloon(string title, string message, string url)
+    {
+        _balloonUrl = url;
+        _icon.BalloonTipClicked -= OnBalloonUrlClick;
+        _icon.BalloonTipClicked += OnBalloonUrlClick;
+        ShowBalloon(title, message);
+    }
+
+    private void OnBalloonUrlClick(object? sender, EventArgs e)
+    {
+        if (_balloonUrl is not { } url) return;
+        try
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch { /* 打开浏览器失败只能忽略 */ }
+    }
+
     public void Dispose()
     {
         _icon.Dispose();

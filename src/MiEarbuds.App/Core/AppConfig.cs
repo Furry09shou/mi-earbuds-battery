@@ -11,6 +11,9 @@ public sealed class AppConfig
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }
 
+    // 每天最多静默检查一次更新
+    public DateTime? LastUpdateCheckUtc { get; set; }
+
     private static string Dir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MiEarbuds");
     private static string FilePath => Path.Combine(Dir, "config.json");
