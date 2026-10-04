@@ -273,6 +273,20 @@
                                  GotFocus="ModelBox_GotFocus" LostFocus="ModelBox_LostFocus"/>
                         <TextBlock x:Name="ModelHint" Text="请先填写耳机型号" FontSize="11" Foreground="#D96A5B"
                                    Margin="2,6,0,0" Visibility="Collapsed"/>
+                        <TextBlock Text="耳机形态" FontSize="11.5" Foreground="#C9C9CF" Margin="0,16,0,2"/>
+                        <StackPanel>
+                            <RadioButton x:Name="LayoutOptionDualCase" GroupName="DeviceLayout" IsChecked="True"
+                                         Content="双耳 + 充电仓（常见真无线）" FontSize="12.5"
+                                         Foreground="#EDEDF0" Margin="0,3,0,0"/>
+                            <RadioButton x:Name="LayoutOptionDualNoCase" GroupName="DeviceLayout"
+                                         Content="双耳，充电仓不广播电量" FontSize="12.5"
+                                         Foreground="#EDEDF0" Margin="0,3,0,0"/>
+                            <RadioButton x:Name="LayoutOptionMono" GroupName="DeviceLayout"
+                                         Content="仅单耳耳机" FontSize="12.5"
+                                         Foreground="#EDEDF0" Margin="0,3,0,0"/>
+                        </StackPanel>
+                        <TextBlock TextWrapping="Wrap" FontSize="10.5" Foreground="#5C5C66" Margin="0,8,0,0"
+                                   Text="形态决定采集动作与电量字段数量（单耳没有左右之分，部分耳机无仓电量）。选择会随数据一起提交，帮助开发者正确识别布局。"/>
                     </StackPanel>
 
                     <!-- 向导页 1-5：动作步骤 -->

@@ -21,12 +21,18 @@ public static class FormatAnalyzer
     {
         var packets = new List<Packet>();
         var stage = "";
+        var layout = "";
         foreach (var line in File.ReadLines(jsonlPath))
         {
             try
             {
                 using var doc = JsonDocument.Parse(line);
                 var root = doc.RootElement;
+                if (root.TryGetProperty("layout", out var layoutEl))
+                {
+                    layout = layoutEl.GetString() ?? "";
+                    continue;
+                }
                 if (root.TryGetProperty("marker", out var marker))
                 {
                     stage = marker.GetString() ?? "";
@@ -48,6 +54,19 @@ public static class FormatAnalyzer
 
         var sb = new StringBuilder();
         sb.AppendLine($"本地差分分析：共 {packets.Count} 包。");
+        if (layout.Length > 0)
+        {
+            // 形态决定电量字段数量，是判断候选字节的重要先验
+            var expected = layout switch
+            {
+                "dual_case" => "3 个电量值（左耳/右耳/充电仓）",
+                "dual_nocase" => "2 个电量值（左耳/右耳，无仓电量字段）",
+                "mono" => "1 个电量值（单耳，无左右差分）",
+                _ => null,
+            };
+            sb.AppendLine($"耳机形态：{CaptureService.LayoutLabel(layout)}" +
+                          (expected is null ? "" : $"，预期包含 {expected}。"));
+        }
 
         // 主设备 = 包数最多的 MAC；主帧 = 该 MAC 下最常见的 (cid, 长度)
         var byMac = packets.GroupBy(p => p.Mac).OrderByDescending(g => g.Count()).ToList();

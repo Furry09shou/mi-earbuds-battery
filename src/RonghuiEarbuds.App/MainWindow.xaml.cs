@@ -306,12 +306,18 @@ public partial class MainWindow : Window
     private const string IssueUrlBase = "https://github.com/Furry09shou/ronghui-earbuds/issues/new";
     private const double MainViewHeight = 448;
     private const double AdapterListHeight = 480;
-    private const double AdapterWizardHeight = 520;
+    private const double AdapterWizardHeight = 560;
     private const string ModelPlaceholder = "例如：Redmi Buds 5";
     private static readonly Color PlaceholderColor = Color.FromRgb(0x5C, 0x5C, 0x66);
     private static readonly Color InputColor = Color.FromRgb(0xED, 0xED, 0xF0);
 
-    private static readonly (string Title, string Detail)[] AdapterSteps =
+    // 耳机形态（写入采集元数据，供分析时区分电量字段数量）
+    private const string LayoutDualCase = "dual_case";
+    private const string LayoutDualNoCase = "dual_nocase";
+    private const string LayoutMono = "mono";
+
+    // 双耳（含充电仓不广播电量的形态——物理动作相同，只是没有仓电量字段）
+    private static readonly (string Title, string Detail)[] StepsDual =
     {
         ("双耳入仓，开盖等 10 秒", "把两只耳机都放回充电仓，保持仓盖打开，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。"),
         ("取出左耳，等 10 秒", "把左耳从仓中取出（戴或不戴都可以），右耳留在仓内，等待约 10 秒。"),
@@ -320,11 +326,29 @@ public partial class MainWindow : Window
         ("右耳放回，完成采集", "把右耳放回仓内，等待约 10 秒，然后点击「完成并上传」。"),
     };
 
+    // 单耳：没有左右之分，改为观察"入盒/取出/使用"的差别
+    private static readonly (string Title, string Detail)[] StepsMono =
+    {
+        ("耳机入盒，开盖等 10 秒", "把耳机放回充电盒，保持盒盖打开，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。"),
+        ("取出耳机，等 10 秒", "把耳机从盒中取出，等待约 10 秒。"),
+        ("戴上使用，等 10 秒", "戴上耳机正常使用（或开机静置），等待约 10 秒。"),
+        ("放回盒内，等 10 秒", "把耳机放回盒内，等待约 10 秒。"),
+        ("再取出，完成采集", "再次取出耳机，等待约 10 秒，然后点击「完成并上传」。"),
+    };
+
     private readonly CaptureService _capture = new();
     private int _adapterPage = -1;      // -1=不在适配视图，0=型号页，1..5=动作步骤
     private bool _adapterRunning;
+    private string _layout = LayoutDualCase;
     private int _captureShown = -1;
     private Border[]? _dots;
+
+    private (string Title, string Detail)[] CurrentSteps() =>
+        _layout == LayoutMono ? StepsMono : StepsDual;
+
+    private string SelectedLayout() =>
+        LayoutOptionDualNoCase.IsChecked == true ? LayoutDualNoCase :
+        LayoutOptionMono.IsChecked == true ? LayoutMono : LayoutDualCase;
 
     private void ShowAdapterList(bool instant)
     {
@@ -347,8 +371,8 @@ public partial class MainWindow : Window
 
         if (page >= 1)
         {
-            // 步骤标题与详情
-            var (title, detail) = AdapterSteps[page - 1];
+            // 步骤标题与详情（按耳机形态区分文案）
+            var (title, detail) = CurrentSteps()[page - 1];
             ((TextBlock)FindName($"StepTitle{page}")!).Text = title;
             ((TextBlock)FindName($"StepDetail{page}")!).Text = detail;
         }
@@ -493,6 +517,7 @@ public partial class MainWindow : Window
                 return;
             }
             ModelHint.Visibility = Visibility.Collapsed;
+            _layout = SelectedLayout();
             _capture.Start();
             _adapterRunning = true;
             _capture.AddMarker("开始采集");
@@ -500,7 +525,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _capture.AddMarker($"完成阶段{_adapterPage}:{AdapterSteps[_adapterPage - 1].Title}");
+        _capture.AddMarker($"完成阶段{_adapterPage}:{CurrentSteps()[_adapterPage - 1].Title}");
         if (_adapterPage < 5)
         {
             ShowAdapterPage(_adapterPage + 1);
@@ -554,7 +579,7 @@ public partial class MainWindow : Window
             var model = ModelBox.Text.Trim();
             if (model.Length == 0) model = "未知型号";
             _capture.AddMarker("结束采集");
-            var (jsonl, zip) = _capture.Export(model);
+            var (jsonl, zip) = _capture.Export(model, _layout);
 
             // 本地差分分析：自动生成候选布局报告，随 Issue 一起提交
             string analysis;
@@ -571,6 +596,7 @@ public partial class MainWindow : Window
             }
 
             var body = $"机型：{model}\n" +
+                       $"耳机形态：{CaptureService.LayoutLabel(_layout)}\n" +
                        $"采集时间：{DateTime.Now:yyyy-MM-dd HH:mm}\n" +
                        $"捕获包数：{_capture.Count}\n" +
                        $"产品标识：{string.Join(" / ", _capture.ProductKeys)}\n\n" +

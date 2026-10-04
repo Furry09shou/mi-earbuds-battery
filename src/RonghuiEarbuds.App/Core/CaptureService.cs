@@ -69,13 +69,23 @@ public sealed class CaptureService : IDisposable
         Ticked?.Invoke();
     }
 
+    /// <summary>耳机形态的显示名（dual_case / dual_nocase / mono）。</summary>
+    public static string LayoutLabel(string layout) => layout switch
+    {
+        "dual_nocase" => "双耳（充电仓不广播电量）",
+        "mono" => "仅单耳",
+        "dual_case" => "双耳 + 充电仓",
+        "" => "未记录",
+        _ => layout,
+    };
+
     /// <summary>导出到 文档\RonghuiEarbudsCapture\，返回 jsonl 与 zip 路径。</summary>
-    public (string JsonlPath, string ZipPath) Export(string modelName)
+    public (string JsonlPath, string ZipPath) Export(string modelName, string layout)
     {
         string[] meta =
         {
             $"{{\"type\":\"ronghui-earbuds-capture\",\"v\":1,\"model\":\"{modelName}\"," +
-            $"\"captured\":\"{DateTime.Now:O}\",\"packets\":{Count}}}",
+            $"\"layout\":\"{layout}\",\"captured\":\"{DateTime.Now:O}\",\"packets\":{Count}}}",
             "{\"privacy\":\"包含耳机广播 MAC（仅用于分析），不含用户个人数据\"}",
         };
         string[] snapshot;
