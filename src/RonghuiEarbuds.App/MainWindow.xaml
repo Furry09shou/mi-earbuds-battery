@@ -348,7 +348,7 @@
                                          Content="双耳 + 充电仓（常见真无线）" FontSize="12.5"
                                          Foreground="#EDEDF0" Margin="0,3,0,0"/>
                             <RadioButton x:Name="LayoutOptionDualNoCase" GroupName="DeviceLayout"
-                                         Content="仅双耳，无充电仓" FontSize="12.5"
+                                         Content="仅双耳，无充电仓或仓不广播电量" FontSize="12.5"
                                          Foreground="#EDEDF0" Margin="0,3,0,0"/>
                             <RadioButton x:Name="LayoutOptionMono" GroupName="DeviceLayout"
                                          Content="仅单耳耳机，无充电仓" FontSize="12.5"

@@ -60,7 +60,7 @@ public static class FormatAnalyzer
             var expected = layout switch
             {
                 "dual_case" => "3 个电量值（左耳/右耳/充电仓）",
-                "dual_nocase" => "2 个电量值（左耳/右耳，无充电仓）",
+                "dual_nocase" => "2 个电量值（左耳/右耳，无仓或仓不广播）",
                 "mono" => "1 个电量值（单耳，无左右差分）",
                 _ => null,
             };

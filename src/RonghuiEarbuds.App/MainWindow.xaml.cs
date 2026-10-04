@@ -195,7 +195,12 @@ public partial class MainWindow : Window
         // ACL 会保持几秒；两者都失去才算断开，避免慢判/误判）
         bool hasData = st is not null && st.LastSeen != DateTime.MinValue;
         bool fresh = hasData && (DateTime.Now - st!.LastSeen).TotalSeconds <= StaleAfterSeconds;
-        bool systemConnected = hasData && !fresh && BtConnectionProbe.IsConnected(st!.Mac);
+        // 广播停了不代表断开（耳机连着电脑用时就不再广播）。系统连接判定两路：
+        // Win32 蓝牙枚举（部分耳机查不到）+ 音频端点（耳机能出声就一定在）
+        var probeName = st!.Name.Length > 0 ? st.Name : null;
+        bool systemConnected = hasData && !fresh && (
+            BtConnectionProbe.IsConnected(st.Mac, probeName) ||
+            AudioEndpointProbe.HasActiveEndpoint(probeName));
         bool alive = fresh || systemConnected;
 
         LiveDot.Fill = new SolidColorBrush(alive ? GoodColor : UnknownColor);
@@ -487,14 +492,14 @@ public partial class MainWindow : Window
         ("右耳放回，完成采集", "把右耳放回仓内，等待约 10 秒，然后点击「完成并上传」。"),
     };
 
-    // 仅双耳（无充电仓）：动作用开关机代替入仓取仓，同样制造左右差分
+    // 仅双耳（无仓或仓不广播电量）：动作兼容两种耳机——开关机或入仓出仓均可
     private static readonly (string Title, string Detail)[] StepsDualNoCase =
     {
-        ("双耳开机，靠近电脑等 10 秒", "把两只耳机都打开电源，放在电脑旁边，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。这类耳机没有充电仓，全程无需入仓，只关注左右两只耳机。"),
-        ("关闭左耳，等 10 秒", "把左耳关机（右耳保持开机），等待约 10 秒。"),
-        ("打开左耳，等 10 秒", "把左耳重新开机，恢复双耳同开，等待约 10 秒。"),
-        ("关闭右耳，等 10 秒", "把右耳关机（左耳保持开机），等待约 10 秒。"),
-        ("打开右耳，完成采集", "把右耳重新开机，双耳同开等待约 10 秒，然后点击「完成并上传」。数据应只有左右耳两个电量字段，没有充电仓电量。"),
+        ("双耳就位，等 10 秒", "把两只耳机打开电源，或从充电仓取出（如果耳机有仓），放在电脑旁边，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。这类耳机的充电仓不会提供电量数据（或没有充电仓），全程只需关注左右两只耳机。"),
+        ("隔离左耳，等 10 秒", "把左耳关机，或放回充电仓并合上仓盖（右耳保持在外），等待约 10 秒。"),
+        ("左耳归队，等 10 秒", "把左耳重新开机，或从仓中取出，恢复双耳在外，等待约 10 秒。"),
+        ("隔离右耳，等 10 秒", "把右耳关机，或放回充电仓并合上仓盖（左耳保持在外），等待约 10 秒。"),
+        ("右耳归队，完成采集", "把右耳重新开机，或从仓中取出，双耳在外等待约 10 秒，然后点击「完成并上传」。数据应只有左右耳两个电量字段，没有充电仓电量。"),
     };
 
     // 仅单耳（无充电仓）：只有一只耳机，观察开机/使用/静置/重启的状态差别

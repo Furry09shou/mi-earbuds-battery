@@ -75,15 +75,22 @@ public static class BtConnectionProbe
         return _radio;
     }
 
-    /// <summary>查询该 MAC（"AA:BB:CC:DD:EE:FF"）当前是否与系统保持蓝牙连接。</summary>
-    public static bool IsConnected(string? macText)
+    /// <summary>
+    /// 查询该耳机当前是否与系统保持蓝牙连接。
+    /// 优先按 MAC 精确匹配；部分 TWS 耳机的 BLE 广播地址与系统配对的
+    /// 经典蓝牙地址不一致，此时退回按显示名匹配「已连接」设备兜底。
+    /// </summary>
+    public static bool IsConnected(string? macText, string? name = null)
     {
         var addr = ParseMac(macText);
-        if (addr == 0) return false;
         lock (Gate)
         {
             var radio = GetRadio();
-            if (radio == IntPtr.Zero) return false;
+            if (radio == IntPtr.Zero)
+            {
+                _radio = IntPtr.Zero;   // 电台可能重启过，下次重新打开
+                return false;
+            }
 
             var sp = new BLUETOOTH_DEVICE_SEARCH_PARAMS
             {
@@ -102,18 +109,28 @@ public static class BtConnectionProbe
             if (h == IntPtr.Zero) return false;
 
             var connected = false;
+            var matched = false;
             while (true)
             {
-                if (di.Address == addr)
+                if (addr != 0 && di.Address == addr)
                 {
                     connected = di.fConnected != 0;
+                    matched = true;
+                    break;
+                }
+                // 地址对不上（广播地址≠配对地址）：看已连接设备里有没有同名耳机
+                if (!string.IsNullOrEmpty(name) && di.fConnected != 0 &&
+                    string.Equals(di.szName, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    connected = true;
+                    matched = true;
                     break;
                 }
                 di = new BLUETOOTH_DEVICE_INFO { dwSize = size };
                 if (BluetoothFindNextDevice(h, ref di) == 0) break;
             }
             BluetoothFindDeviceClose(h);
-            return connected;
+            return matched && connected;
         }
     }
 
