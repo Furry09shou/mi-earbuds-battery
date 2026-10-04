@@ -3,12 +3,39 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- WinForms 仅提供 FolderBrowserDialog，禁止其全局 using 污染 WPF 代码 -->
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>RonghuiEarbuds.Setup</AssemblyName>
     <RootNamespace>RonghuiEarbuds.Setup</RootNamespace>
+    <ApplicationIcon>..\..\assets\RonghuiEarbuds.ico</ApplicationIcon>
     <Version>1.0.0</Version>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+    <EmbeddedResource Include="..\..\assets\logo.png" LogicalName="RonghuiEarbuds.Logo.png" />
+  </ItemGroup>
+
+  <!-- 把主程序 Release 产物打成 zip 并内嵌进安装器 exe（单文件分发）。
+       依赖主程序已先构建（build.cmd 保证顺序）。 -->
+  <Target Name="PrepareAppPayload" BeforeTargets="AssignTargetPaths">
+    <PropertyGroup>
+      <PayloadSrc>..\..\src\RonghuiEarbuds.App\bin\Release\net8.0-windows10.0.19041.0</PayloadSrc>
+      <PayloadWork>$(IntermediateOutputPath)payload\</PayloadWork>
+    </PropertyGroup>
+    <ItemGroup>
+      <AppFiles Include="$(PayloadSrc)\**\*.*" Exclude="$(PayloadSrc)\**\*.pdb" />
+    </ItemGroup>
+    <Copy SourceFiles="@(AppFiles)"
+          DestinationFiles="@(AppFiles->'$(PayloadWork)app\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Delete Files="$(PayloadWork)app.zip" />
+    <ZipDirectory SourceDirectory="$(PayloadWork)app" DestinationFile="$(PayloadWork)app.zip" />
+    <ItemGroup>
+      <EmbeddedResource Include="$(PayloadWork)app.zip" LogicalName="RonghuiEarbuds.Payload.zip" />
+    </ItemGroup>
+  </Target>
 </Project>

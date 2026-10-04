@@ -3,6 +3,9 @@ bin/
 obj/
 *.user
 
+# 发布产物（构建脚本输出）
+dist/
+
 # 本地采集数据（含设备 ID，不入库）
 probe_logs/
 
