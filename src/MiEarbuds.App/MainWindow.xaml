@@ -161,7 +161,7 @@
                         <Button x:Name="UpdateButton" Style="{StaticResource GhostButton}"
                                 Content="检查更新" Click="UpdateButton_Click"/>
                         <Button x:Name="AdaptButton" Style="{StaticResource GhostButton}"
-                                Content="适配新耳机" Margin="8,0,0,0" Click="AdaptButton_Click"/>
+                                Content="适配名单" Margin="8,0,0,0" Click="AdaptButton_Click"/>
                         <Button x:Name="RebindButton" Style="{StaticResource GhostButton}"
                                 Content="重新绑定" Margin="8,0,0,0" Click="RebindButton_Click"/>
                     </StackPanel>

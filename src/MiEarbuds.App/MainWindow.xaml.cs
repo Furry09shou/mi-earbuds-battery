@@ -51,11 +51,6 @@ public partial class MainWindow : Window
         _onUpdateApplied = onUpdateApplied;
         _onAliveChanged = onAliveChanged;
 
-        // 已适配机型列表：跟随解析器档案自动更新
-        AdaptButton.ToolTip = "已适配机型：\n" +
-            string.Join("\n", XiaomiAdvParser.GetSupportedNames().Select(n => "· " + n)) +
-            "\n\n其他型号可用采集向导广播数据，众包适配";
-
         RestorePosition(config);
 
         AutoStartCheck.IsChecked = AutoStartHelper.IsEnabled();
