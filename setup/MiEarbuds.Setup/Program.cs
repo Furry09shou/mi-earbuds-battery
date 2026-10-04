@@ -11,7 +11,7 @@ namespace MiEarbuds.Setup;
 /// </summary>
 internal static class Program
 {
-    private const string AppName = "小米耳机电量";
+    private const string AppName = "绒汇耳机助手";
     private const string ExeName = "MiEarbuds.exe";
     private const string RunValueName = "MiEarbuds";
     private const string UninstallKeyPath =
@@ -333,7 +333,7 @@ internal static class Program
             linkType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, link,
                 new object[] { target });
             linkType.InvokeMember("Description", BindingFlags.SetProperty, null, link,
-                new object[] { $"{AppName} - 小米耳机 BLE 电量监控" });
+                new object[] { $"{AppName} - 耳机 BLE 电量监控" });
             linkType.InvokeMember("Save", BindingFlags.InvokeMethod, null, link, null);
         }
         catch { /* 快捷方式失败不影响安装 */ }

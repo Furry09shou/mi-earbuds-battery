@@ -4,7 +4,8 @@ using Windows.Devices.Bluetooth.Advertisement;
 namespace MiEarbuds.App.Core;
 
 /// <summary>
-/// 被动监听小米耳机 BLE 广播，自动绑定第一台出现在附近的目标设备，
+/// 被动监听耳机 BLE 广播（不限品牌，解析档案见 XiaomiAdvParser.Profiles），
+/// 自动绑定第一台出现在附近的目标设备，
 /// 之后仅把该设备的解析结果对外推送。
 /// </summary>
 public sealed class EarbudsWatcher : IDisposable

@@ -25,7 +25,7 @@ public sealed class TrayController : IDisposable
         _icon = new WinForms.NotifyIcon
         {
             Visible = true,
-            Text = "小米耳机电量",
+            Text = "绒汇耳机助手",
         };
         SetIcon(null);
 
@@ -69,7 +69,7 @@ public sealed class TrayController : IDisposable
         _connected = connected;
         if (!connected)
         {
-            _icon.Text = "小米耳机电量\n信号丢失 · 打开仓盖刷新";
+            _icon.Text = "绒汇耳机助手\n信号丢失 · 打开仓盖刷新";
         }
     }
 
