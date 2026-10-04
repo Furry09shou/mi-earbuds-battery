@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -21,6 +22,7 @@ public partial class MainWindow : Window
 
     private bool _initialized;
     private DateTime _lastSeen = DateTime.MinValue;
+    private string _mac = "";
     private int? _rssi;
 
     // 抖动抑制：充电触点瞬态会造成个别字段跳变，跳变过大时先压住
@@ -77,6 +79,7 @@ public partial class MainWindow : Window
     private void ApplyUpdate(EarbudsUpdate u)
     {
         _lastSeen = u.Timestamp;
+        _mac = u.Mac;
         _rssi = u.Rssi;
         var s = u.Snapshot;
 
@@ -152,8 +155,12 @@ public partial class MainWindow : Window
 
     private void RefreshAliveState()
     {
-        bool alive = (DateTime.Now - _lastSeen).TotalSeconds <= StaleAfterSeconds;
+        // 断开判定：广播新鲜 OR 系统蓝牙仍保持连接（合盖后广播立停，但系统
+        // ACL 会保持几秒；两者都失去才算断开，避免慢判/误判）
+        bool fresh = (DateTime.Now - _lastSeen).TotalSeconds <= StaleAfterSeconds;
         bool hasData = _lastSeen != DateTime.MinValue;
+        bool systemConnected = hasData && !fresh && BtConnectionProbe.IsConnected(_mac);
+        bool alive = fresh || systemConnected;
 
         LiveDot.Fill = new SolidColorBrush(alive ? GoodColor : UnknownColor);
         StartPulse(alive);
@@ -161,7 +168,9 @@ public partial class MainWindow : Window
         StateText.Text = !hasData
             ? "请打开充电仓盖"
             : alive
-                ? $"实时更新 · 信号 {_rssi} dBm"
+                ? fresh
+                    ? $"实时更新 · 信号 {_rssi} dBm"
+                    : "蓝牙保持连接 · 等待新广播"
                 : "信号丢失 · 请打开仓盖刷新电量";
 
         CardsGrid.Opacity = hasData && !alive ? 0.45 : 1.0;
@@ -222,8 +231,7 @@ public partial class MainWindow : Window
     private void RebindButton_Click(object sender, RoutedEventArgs e)
     {
         _watcher.Unbind();
-        _lastSeen = DateTime.MinValue;
-        _lastLeft = _lastRight = _lastCase = null;
+        _lastSeen = DateTime.MinValue;        _lastLeft = _lastRight = _lastCase = null;
         _lastLeftInCase = _lastRightInCase = null;
         _rssi = null;
 
@@ -554,6 +562,13 @@ public partial class MainWindow : Window
             catch { analysis = "本地分析失败（数据仍完整保留，可人工分析）。"; }
             var analysisPath = Path.ChangeExtension(jsonl, ".analysis.txt");
             File.WriteAllText(analysisPath, analysis);
+
+            // 原始数据（jsonl）+ 分析报告一起打进 zip，本地亦永久保留两份
+            using (var fs = new FileStream(zip, FileMode.Open, FileAccess.ReadWrite))
+            using (var archive = new ZipArchive(fs, ZipArchiveMode.Update))
+            {
+                archive.CreateEntryFromFile(analysisPath, Path.GetFileName(analysisPath));
+            }
 
             var body = $"机型：{model}\n" +
                        $"采集时间：{DateTime.Now:yyyy-MM-dd HH:mm}\n" +
