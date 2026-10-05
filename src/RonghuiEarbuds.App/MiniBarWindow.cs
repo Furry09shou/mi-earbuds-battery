@@ -49,8 +49,8 @@ public sealed class MiniBarWindow : Window
     {
         _config = config;
 
-        Width = 292;   // 视觉条 240×44 + 四周留白，给阴影呼吸空间（否则阴影被窗口边界
-        Height = 92;   // 硬裁成直角边，圆角条像贴图）
+        Width = 324;   // 视觉条 272×44 + 四周留白，给阴影呼吸空间（否则阴影被窗口边界
+        Height = 92;   // 硬裁成直角边，圆角条像贴图）；272 宽保证名字列不被值区饿死
         WindowStartupLocation = WindowStartupLocation.Manual;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -97,7 +97,7 @@ public sealed class MiniBarWindow : Window
 
     private UIElement BuildContent()
     {
-        var grid = new Grid { Margin = new Thickness(15, 0, 15, 0) };
+        var grid = new Grid { Margin = new Thickness(12, 0, 12, 0) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         for (var i = 0; i < 3; i++)
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -115,7 +115,7 @@ public sealed class MiniBarWindow : Window
 
         for (var i = 0; i < 3; i++)
         {
-            var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(9, 0, 0, 0) };
+            var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 0, 0) };
 
             var dot = new Ellipse { Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center };
             var value = new TextBlock
@@ -123,7 +123,7 @@ public sealed class MiniBarWindow : Window
                 FontSize = 12.5,
                 FontWeight = FontWeights.SemiBold,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(5, 0, 0, 0),
+                Margin = new Thickness(4, 0, 0, 0),
                 Text = "--",
             };
             value.SetResourceReference(TextBlock.ForegroundProperty, "T.TextPrimary");
@@ -207,7 +207,7 @@ public sealed class MiniBarWindow : Window
             return;   // 尚未完成布局，SizeChanged/Loaded 时机回来重判
         if (textW <= viewW + 0.5)
         {
-            _nameShift.X = 0;
+            _nameShift.X = Math.Max(0, (viewW - textW) / 2);   // 在名字区域内水平居中
             return;
         }
         double overflow = textW - viewW + 10;   // 末尾留一点缓冲
