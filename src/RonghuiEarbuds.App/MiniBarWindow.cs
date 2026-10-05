@@ -104,10 +104,10 @@ public sealed class MiniBarWindow : Window
 
         _nameText.SetResourceReference(TextBlock.ForegroundProperty, "T.TextSecondary");
         _nameText.RenderTransform = _nameShift;
-        _nameCanvas.Height = 17;                       // 固定行高：desired 链不可靠，文字曾因此被裁成 0 高
-        _nameCanvas.Children.Add(_nameText);
+        _nameCanvas.Height = 14;                       // 贴合文字行高：行高偏大时文字顶部对齐会
+        _nameCanvas.Children.Add(_nameText);           // 整体偏上，与右侧电量值不在一条水平线
         _nameHost.Children.Add(_nameCanvas);
-        _nameHost.MinHeight = 17;
+        _nameHost.MinHeight = 14;
         _nameHost.VerticalAlignment = VerticalAlignment.Center;
         _nameHost.SizeChanged += (_, _) => UpdateMarquee();
         Grid.SetColumn(_nameHost, 0);
