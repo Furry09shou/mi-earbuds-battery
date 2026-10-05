@@ -32,8 +32,15 @@ public sealed class MiniBarWindow : Window
     private DateTime[] _lastTimes = { DateTime.MinValue, DateTime.MinValue, DateTime.MinValue };
     private DateTime _broadcastSeen = DateTime.MinValue;
     private bool _themeHooked;
+    private readonly TextBlock[] _labels = new TextBlock[3];
 
-    private static readonly string[] Labels = { "L", "R", "仓" };
+    /// <summary>悬浮条三列小标签：L / R / 仓（仓随语言切换）。</summary>
+    private static string MiniLabel(int i) => i switch
+    {
+        0 => "L",
+        1 => "R",
+        _ => L.T("mini.caseLabel"),
+    };
 
     /// <summary>App 注入：双击迷你条时显示主窗口。</summary>
     public Action? OpenMainRequested { get; set; }
@@ -52,7 +59,9 @@ public sealed class MiniBarWindow : Window
         ShowInTaskbar = false;
         Topmost = true;
         ShowActivated = false;
-        Title = "绒汇电量条";
+        Title = L.T("mini.title");
+
+        L.Changed += () => Dispatcher.Invoke(ApplyLanguage);
 
         var root = new Border
         {
@@ -119,12 +128,13 @@ public sealed class MiniBarWindow : Window
             value.SetResourceReference(TextBlock.ForegroundProperty, "T.TextPrimary");
             var label = new TextBlock
             {
-                Text = Labels[i],
+                Text = MiniLabel(i),
                 FontSize = 9.5,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(3, 1, 0, 0),
             };
             label.SetResourceReference(TextBlock.ForegroundProperty, "T.TextDim");
+            _labels[i] = label;
 
             var bolt = new Path
             {
@@ -153,7 +163,7 @@ public sealed class MiniBarWindow : Window
     /// <summary>接收关注设备的广播数据。</summary>
     public void Push(EarbudsUpdate u)
     {
-        var name = string.IsNullOrWhiteSpace(u.DisplayName) ? "耳机" : u.DisplayName!;
+        var name = string.IsNullOrWhiteSpace(u.DisplayName) ? L.T("mini.earbuds") : u.DisplayName!;
         if (name != _lastName)
         {
             _lastName = name;
@@ -240,6 +250,14 @@ public sealed class MiniBarWindow : Window
                 bolt.Visibility = Visibility.Collapsed;
             }
         }
+    }
+
+    /// <summary>语言切换：更新悬浮条标题与小标签（设备名随下一次广播刷新）。</summary>
+    private void ApplyLanguage()
+    {
+        Title = L.T("mini.title");
+        for (var i = 0; i < 3; i++)
+            _labels[i].Text = MiniLabel(i);
     }
 
     /// <summary>按配置显示/隐藏（跟随设置开关，App 启动与设置变更时调用）。</summary>

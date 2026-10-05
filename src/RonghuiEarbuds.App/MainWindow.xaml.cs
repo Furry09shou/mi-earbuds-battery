@@ -20,8 +20,10 @@ public partial class MainWindow : Window
     private readonly Action<bool>? _onAliveChanged;
     private readonly Action<bool>? _onMiniBarToggle;
     private readonly DispatcherTimer _aliveTimer;
-    private readonly BatteryHistoryStore _history = new();
+    private readonly BatteryHistoryStore _history;
     private bool _lastAlive = true;
+    // 型号输入框当前是否显示占位文案（语言切换时替换为新占位符）
+    private bool _modelShowingPlaceholder = true;
 
     private bool _initialized;
 
@@ -83,6 +85,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         _watcher = watcher;
         _config = config;
+        _history = new BatteryHistoryStore(config);
         _onUpdateApplied = onUpdateApplied;
         _onAliveChanged = onAliveChanged;
         _onMiniBarToggle = onMiniBarToggle;
@@ -94,6 +97,10 @@ public partial class MainWindow : Window
         AutoStartCheck.IsChecked = AutoStartHelper.IsEnabled();
         InitSettingsControls();
         _initialized = true;
+
+        // 语言切换即时生效：重建/重设界面文案（含托盘与悬浮条各自的订阅）
+        L.Changed += () => Dispatcher.Invoke(ApplyLanguage);
+        ApplyLanguage();
 
         ApplyPinState();   // 恢复用户的图钉置顶设置
 
@@ -213,7 +220,7 @@ public partial class MainWindow : Window
     private void SetActive(DeviceState st)
     {
         _active = st;
-        DeviceNameText.Text = st.Name.Length > 0 ? st.Name : "正在识别…";
+        DeviceNameText.Text = st.Name.Length > 0 ? st.Name : L.T("main.identifying");
         MacText.Text = st.Mac;
         UnadaptedHint.Visibility = st.IsAdapted ? Visibility.Collapsed : Visibility.Visible;
         SetRingInstant(LeftRing, st.Left);
@@ -227,8 +234,8 @@ public partial class MainWindow : Window
     private static string InCaseText(bool? inCase) => inCase switch
     {
         null => "--",
-        true => "充电中",
-        false => "使用中",
+        true => L.T("state.charging"),
+        false => L.T("state.inUse"),
     };
 
     /// <summary>带抖动抑制的电量值过滤；返回 null 表示维持现状。</summary>
@@ -285,14 +292,14 @@ public partial class MainWindow : Window
         StartPulse(alive);
 
         StateText.Text = unadapted
-            ? (alive ? "已连接 · 该机型不支持分耳电量" : "未连接")
+            ? (alive ? L.T("state.connectedUnadapted") : L.T("state.disconnected"))
             : !hasData
-                ? "请打开充电仓盖"
+                ? L.T("state.openLid")
                 : alive
                     ? fresh && st!.Rssi is { } rssi
-                        ? $"实时更新 · 信号 {rssi} dBm"
-                        : "蓝牙保持连接 · 等待新广播"
-                    : "信号丢失 · 请打开仓盖刷新电量";
+                        ? L.F("state.liveFmt", rssi)
+                        : L.T("state.waitingBroadcast")
+                    : L.T("state.signalLost");
 
         CardsGrid.Opacity = hasData && !alive ? 0.45 : 1.0;
 
@@ -312,11 +319,11 @@ public partial class MainWindow : Window
                 CaseCard.Opacity = 1.0;
                 if (caseOnline)
                 {
-                    CaseStatusText.Text = "在线";   // 电量数字在圆环上已显示，状态行不重复
+                    CaseStatusText.Text = L.T("state.online");   // 电量数字在圆环上已显示，状态行不重复
                 }
                 else
                 {
-                    CaseStatusText.Text = fresh ? "离线" : "--";
+                    CaseStatusText.Text = fresh ? L.T("state.offline") : "--";
                     CaseRing.SetInstant(-1);
                     CaseRing.RingColor = UnknownColor;
                 }
@@ -328,7 +335,7 @@ public partial class MainWindow : Window
         }
 
         if (!hasData || !alive)
-            CaseStatusText.Text = unadapted ? "--" : "等待广播";
+            CaseStatusText.Text = unadapted ? "--" : L.T("state.waitingCase");
 
         // 连接/断开状态变化时通知托盘（断开后托盘悬浮提示不再挂旧电量）
         if (_lastAlive != alive)
@@ -367,8 +374,8 @@ public partial class MainWindow : Window
         if (alive && st.SystemBattery is { } lv && !anyFreshChannel)
         {
             SystemBatteryText.Text = st.IsAdapted
-                ? $"系统电量 {lv}% · 放入充电仓重新开盖可刷新"
-                : $"系统电量 {lv}%（该机型仅支持整机电量）";
+                ? L.F("state.sysBatteryFmt", lv)
+                : L.F("state.sysBatteryUnadaptedFmt", lv);
             SystemBatteryText.Visibility = Visibility.Visible;
         }
         else
@@ -402,7 +409,7 @@ public partial class MainWindow : Window
         if (!fresh)
         {
             card.Opacity = judgeOffline ? 0.45 : 1.0;
-            status.Text = judgeOffline ? "离线" : "--";
+            status.Text = judgeOffline ? L.T("state.offline") : "--";
             return false;
         }
 
@@ -481,7 +488,96 @@ public partial class MainWindow : Window
         PinButton.Content = pinned ? "\uE841" : "\uE718";
         PinButton.Foreground = new SolidColorBrush(
             pinned ? Color.FromRgb(0xE8, 0x7A, 0x3E) : Color.FromRgb(0x8F, 0x8F, 0x98));
-        PinButton.ToolTip = pinned ? "取消置顶" : "窗口置顶";
+        PinButton.ToolTip = pinned ? L.T("main.unpin") : L.T("main.pin");
+    }
+
+    // ---------- 中英双语：语言切换或启动时统一应用文案 ----------
+
+    /// <summary>把当前语言（L.Lang）应用到主窗口全部静态文案；动态文案随各刷新方法重建。</summary>
+    private void ApplyLanguage()
+    {
+        Title = L.T("main.title");
+        LblAppTitle.Text = L.T("main.title");
+        LblSettingsViewTitle.Text = L.T("main.settings");
+        LblSettingsBtnText.Text = L.T("main.settings");
+        PinButton.ToolTip = L.T("main.pin");
+        DeviceSwitchButton.ToolTip = L.T("main.switchDeviceTip");
+        UnadaptedHint.Text = L.T("main.unadaptedHint");
+        UnadaptedHint.ToolTip = L.T("main.unadaptedTooltip");
+
+        // 无设备在显示时刷新兜底名；有设备时名字是真实设备名，不动
+        if (_active is null && !_devices.Values.Any())
+            DeviceNameText.Text = L.T("main.searching");
+
+        LblLeftTitle.Text = L.T("main.left");
+        LblRightTitle.Text = L.T("main.right");
+        LblCaseTitle.Text = L.T("main.caseTitle");
+        CaseHintText.Text = L.T("main.caseHint");
+        LblStatsUsedLabel.Text = L.T("main.usedToday");
+
+        if (_updateInfo is null)
+            UpdateButton.Content = L.T("main.checkUpdate");
+        AdaptButton.Content = L.T("main.adapterList");
+        RebindButton.Content = L.T("main.rebind");
+
+        // 设置页
+        LblSecAlerts.Text = L.T("settings.sectionAlerts");
+        LblLowThresholdTitle.Text = L.T("settings.lowThresholdTitle");
+        LblLowThresholdSub.Text = L.T("settings.lowThresholdSub");
+        LblQuietTitle.Text = L.T("settings.quietTitle");
+        LblQuietSub.Text = L.T("settings.quietSub");
+        LblDropTitle.Text = L.T("settings.dropTitle");
+        LblDropSub.Text = L.T("settings.dropSub");
+        LblSecPopup.Text = L.T("settings.sectionPopup");
+        LblPopupTitle.Text = L.T("settings.popupTitle");
+        LblPopupSub.Text = L.T("settings.popupSub");
+        LblCooldownTitle.Text = L.T("settings.cooldownTitle");
+        LblCooldownSub.Text = L.T("settings.cooldownSub");
+        CooldownValue.Text = L.F("settings.minutesFmt", (int)CooldownSlider.Value);
+        LblSecMini.Text = L.T("settings.sectionMini");
+        LblMiniTitle.Text = L.T("settings.miniTitle");
+        LblMiniSub.Text = L.T("settings.miniSub");
+        LblSecGeneral.Text = L.T("settings.sectionGeneral");
+        LblAutoStartTitle.Text = L.T("settings.autostartTitle");
+        LblAutoStartSub.Text = L.T("settings.autostartSub");
+        LblThemeTitle.Text = L.T("settings.themeTitle");
+        LblThemeSub.Text = L.T("settings.themeSub");
+        LblHistoryTitle.Text = L.T("settings.historyTitle");
+        LblHistorySub.Text = L.T("settings.historySub");
+        OpenHistoryFolderButton.Content = L.T("settings.openFolder");
+        LblLangTitle.Text = L.T("lang.title");
+        LblLangSub.Text = L.T("lang.sub");
+        LblHistoryNote.Text = L.T("settings.historyNote");
+        SettingsBackButton.Content = L.T("settings.back");
+        RefreshSegmentSelections();
+        RefreshQuietHoursLabel();
+
+        // 适配视图静态文案 + 型号占位符
+        LblAdapterListIntro.Text = L.T("adapter.listIntro");
+        LblAdapterListHint.Text = L.T("adapter.listHint");
+        LblWizardModelTitle.Text = L.T("wizard.modelTitle");
+        LblWizardModelBody.Text = L.T("wizard.modelBody");
+        LblWizardModelLabel.Text = L.T("wizard.modelLabel");
+        LblWizardLayoutLabel.Text = L.T("wizard.layoutLabel");
+        LayoutOptionDualCase.Content = L.T("wizard.layoutDualCase");
+        LayoutOptionDualNoCase.Content = L.T("wizard.layoutDualNoCase");
+        LayoutOptionMono.Content = L.T("wizard.layoutMono");
+        LblWizardLayoutNote.Text = L.T("wizard.layoutNote");
+        if (_modelShowingPlaceholder) ModelBox.Text = ModelPlaceholder;
+        if (ModelHint.Visibility == Visibility.Visible)
+            ModelHint.Text = L.T("wizard.modelHint");
+
+        // 适配视图：可见时按当前页重建（名单条目、向导按钮、步骤文案）
+        if (AdapterView.Visibility == Visibility.Visible)
+        {
+            if (_adapterPage < 0) ShowAdapterList(instant: true);
+            else ShowAdapterPage(_adapterPage);
+            RefreshCaptureLive();
+        }
+
+        // 动态状态行/统计条立即按新语言重绘
+        RefreshStats();
+        RefreshAliveState();
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => HideToTray();
@@ -498,7 +594,7 @@ public partial class MainWindow : Window
         _active = null;
         DevicePopup.IsOpen = false;
 
-        DeviceNameText.Text = "正在搜索…";
+        DeviceNameText.Text = L.T("main.searching");
         MacText.Text = "";
         UnadaptedHint.Visibility = Visibility.Collapsed;
         SetRingInstant(LeftRing, null);
@@ -685,11 +781,11 @@ public partial class MainWindow : Window
     {
         if (!d.IsAdapted)
             return (DateTime.Now - d.LastSeen).TotalSeconds <= StaleAfterSeconds
-                ? "已连接 · 不支持分耳电量"
-                : "未连接 · 不支持分耳电量";
+                ? L.T("switch.connectedNoSplit")
+                : L.T("switch.disconnectedNoSplit");
         string part((int Value, DateTime Time, int Suppressed)? s) =>
             IsChannelFresh(s) ? $"{s!.Value.Value}%" : "--";
-        return $"左 {part(d.Left)} · 右 {part(d.Right)} · 仓 {part(d.Case)}";
+        return L.F("switch.summaryFmt", part(d.Left), part(d.Right), part(d.Case));
     }
 
     /// <summary>设备切换列表中的一行。</summary>
@@ -704,7 +800,7 @@ public partial class MainWindow : Window
 
         public System.Windows.Media.Brush Dot =>
             new SolidColorBrush(Online ? GoodColor : UnknownColor);
-        public string Badge => IsCurrent ? "当前" : !Adapted ? "不支持" : "";
+        public string Badge => IsCurrent ? L.T("switch.current") : !Adapted ? L.T("switch.unsupported") : "";
         public Visibility BadgeVisibility =>
             Badge.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -729,24 +825,24 @@ public partial class MainWindow : Window
         }
 
         UpdateButton.IsEnabled = false;
-        UpdateButton.Content = "检查中…";
+        UpdateButton.Content = L.T("main.checking");
         try
         {
             var update = await UpdateChecker.CheckAsync();
             if (update is null)
             {
-                FlashUpdateButton("已是最新");
+                FlashUpdateButton(L.T("main.upToDate"));
             }
             else
             {
                 _updateInfo = update;
                 UpdateButton.IsEnabled = true;
-                UpdateButton.Content = $"新版本 v{update.Version} ↑";
+                UpdateButton.Content = L.F("main.newVersionFmt", update.Version);
             }
         }
         catch
         {
-            FlashUpdateButton("检查失败");
+            FlashUpdateButton(L.T("main.checkFailed"));
         }
     }
 
@@ -758,7 +854,7 @@ public partial class MainWindow : Window
         timer.Tick += (_, _) =>
         {
             timer.Stop();
-            UpdateButton.Content = "检查更新";
+            UpdateButton.Content = L.T("main.checkUpdate");
         };
         timer.Start();
     }
@@ -782,9 +878,10 @@ public partial class MainWindow : Window
         DropAlertCheck.IsChecked = _config.SuddenDropAlert;
         PopupCheck.IsChecked = _config.OpenLidPopup;
         CooldownSlider.Value = Math.Clamp(_config.PopupCooldownMinutes, 1, 30);
-        CooldownValue.Text = $"{(int)CooldownSlider.Value} 分钟";
+        CooldownValue.Text = L.F("settings.minutesFmt", (int)CooldownSlider.Value);
         MiniBarCheck.IsChecked = _config.MiniBarEnabled;
-        RefreshThemeLabel();
+        HistoryCheck.IsChecked = _config.HistoryEnabled;
+        RefreshSegmentSelections();
     }
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => ShowSettingsView();
@@ -841,26 +938,82 @@ public partial class MainWindow : Window
         QuietHoursButton.Opacity = _config.QuietHoursEnabled ? 1.0 : 0.45;
     }
 
-    // 外观三态：跟随系统（默认）/ 深色 / 浅色
-    private static readonly string[] ThemeModes = { "system", "dark", "light" };
-
-    private void ThemeButton_Click(object sender, RoutedEventArgs e)
+    // 外观三态分段按钮：跟随系统（默认）/ 深色 / 浅色
+    private void ThemeSegment_Click(object sender, RoutedEventArgs e)
     {
-        var idx = Array.IndexOf(ThemeModes, _config.ThemeMode);
-        var next = ThemeModes[((idx < 0 ? 0 : idx) + 1) % ThemeModes.Length];
-        _config.ThemeMode = next;
+        var mode = ((Button)sender).Tag?.ToString() ?? "system";
+        _config.ThemeMode = mode;
         _config.Save();
-        ThemeManager.SetMode(next);
-        RefreshThemeLabel();
+        ThemeManager.SetMode(mode);
+        RefreshSegmentSelections();
     }
 
-    private void RefreshThemeLabel() =>
-        ThemeButton.Content = _config.ThemeMode switch
+    // 语言三态分段按钮：跟随系统 / 中文 / English（写配置 + L.SetLanguage 即时刷新）
+    private void LangSegment_Click(object sender, RoutedEventArgs e)
+    {
+        var lang = ((Button)sender).Tag?.ToString() ?? "system";
+        _config.Language = lang;
+        _config.Save();
+        L.SetLanguage(lang);   // 触发 L.Changed → 各界面 ApplyLanguage
+    }
+
+    /// <summary>刷新外观与语言分段按钮的选中态与文案。</summary>
+    private void RefreshSegmentSelections()
+    {
+        ThemeBtnSystem.Content = L.T("theme.system");
+        ThemeBtnDark.Content = L.T("theme.dark");
+        ThemeBtnLight.Content = L.T("theme.light");
+        LangBtnSystem.Content = L.T("theme.system");
+        LangBtnZh.Content = L.T("lang.zh");
+        LangBtnEn.Content = L.T("lang.en");
+        ApplySegmentState(ThemeBtnSystem, _config.ThemeMode == "system");
+        ApplySegmentState(ThemeBtnDark, _config.ThemeMode == "dark");
+        ApplySegmentState(ThemeBtnLight, _config.ThemeMode == "light");
+        ApplySegmentState(LangBtnSystem, _config.Language == "system");
+        ApplySegmentState(LangBtnZh, _config.Language == "zh");
+        ApplySegmentState(LangBtnEn, _config.Language == "en");
+    }
+
+    /// <summary>分段按钮选中态：橙色描边 + Accent 前色；未选为幽灵按钮态。</summary>
+    private static void ApplySegmentState(Button b, bool selected)
+    {
+        if (selected)
         {
-            "dark" => "深色",
-            "light" => "浅色",
-            _ => "跟随系统",
-        };
+            b.SetResourceReference(Button.BorderBrushProperty, "T.Accent");
+            b.SetResourceReference(Button.ForegroundProperty, "T.Accent");
+            b.SetResourceReference(Button.BackgroundProperty, "T.HoverBg");
+            b.FontWeight = FontWeights.SemiBold;
+        }
+        else
+        {
+            b.SetResourceReference(Button.BorderBrushProperty, "T.InputBorder");
+            b.SetResourceReference(Button.ForegroundProperty, "T.TextSecondary");
+            b.Background = System.Windows.Media.Brushes.Transparent;
+            b.FontWeight = FontWeights.Normal;
+        }
+    }
+
+    // 电量历史记录开关（关闭后 BatteryHistoryStore 不再落库，已有数据保留）
+    private void HistoryCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _config.HistoryEnabled = HistoryCheck.IsChecked == true;
+        _config.Save();
+    }
+
+    // 在资源管理器中打开电量历史文件夹（不存在则先创建）
+    private void OpenHistoryFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "RonghuiEarbuds", "history");
+            Directory.CreateDirectory(dir);
+            Process.Start(new ProcessStartInfo(dir) { UseShellExecute = true });
+        }
+        catch { /* 打开失败忽略（目录不可创建等极端情况） */ }
+    }
 
     private void DropAlertCheck_Changed(object sender, RoutedEventArgs e)
     {
@@ -879,7 +1032,7 @@ public partial class MainWindow : Window
     private void CooldownSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (!_initialized) return;
-        CooldownValue.Text = $"{(int)e.NewValue} 分钟";
+        CooldownValue.Text = L.F("settings.minutesFmt", (int)e.NewValue);
         _config.PopupCooldownMinutes = (int)e.NewValue;
         _config.Save();
     }
@@ -908,8 +1061,10 @@ public partial class MainWindow : Window
             ? $"{(int)Math.Round(stats.UsedPercent)}%"
             : "--";
 
-        bool charging = stats.EstimateText == "充电中";
-        StatsEstimateText.Text = charging ? "充电中" : $"预计可用 {stats.EstimateText}";
+        bool charging = stats.EstimateText == L.T("battery.charging");
+        StatsEstimateText.Text = charging
+            ? L.T("battery.charging")
+            : L.F("main.estimateFmt", stats.EstimateText);
         StatsEstimateText.SetResourceReference(TextBlock.ForegroundProperty,
             charging ? "T.Accent" : "T.TextGreen");
 
@@ -940,7 +1095,7 @@ public partial class MainWindow : Window
     private const double SettingsViewHeight = 640;
     private const double AdapterListHeight = 480;
     private const double AdapterWizardHeight = 560;
-    private const string ModelPlaceholder = "例如：Redmi Buds 5";
+    private static string ModelPlaceholder => L.T("wizard.modelPlaceholder");
     private static Color PlaceholderColor => ThemeManager.GetColor("T.TextDim");
     private static Color InputColor => ThemeManager.GetColor("T.TextPrimary");
 
@@ -949,34 +1104,34 @@ public partial class MainWindow : Window
     private const string LayoutDualNoCase = "dual_nocase";
     private const string LayoutMono = "mono";
 
-    // 双耳 + 充电仓（仓也广播电量的常见真无线）
-    private static readonly (string Title, string Detail)[] StepsDual =
+    // 双耳 + 充电仓（仓也广播电量的常见真无线）——存 key，取值时经 L.T 解析当前语言
+    private static readonly (string Key, string DetailKey)[] StepsDual =
     {
-        ("双耳入仓，开盖等 10 秒", "把两只耳机都放回充电仓，保持仓盖打开，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。"),
-        ("取出左耳，等 10 秒", "把左耳从仓中取出（戴或不戴都可以），右耳留在仓内，等待约 10 秒。"),
-        ("左耳放回，等 10 秒", "把左耳放回仓内，等待约 10 秒。"),
-        ("取出右耳，等 10 秒", "把右耳从仓中取出，左耳留在仓内，等待约 10 秒。"),
-        ("右耳放回，完成采集", "把右耳放回仓内，等待约 10 秒，然后点击「完成并上传」。"),
+        ("wizard.dual1T", "wizard.dual1D"),
+        ("wizard.dual2T", "wizard.dual2D"),
+        ("wizard.dual3T", "wizard.dual3D"),
+        ("wizard.dual4T", "wizard.dual4D"),
+        ("wizard.dual5T", "wizard.dual5D"),
     };
 
     // 仅双耳（无仓或仓不广播电量）：动作兼容两种耳机——开关机或入仓出仓均可
-    private static readonly (string Title, string Detail)[] StepsDualNoCase =
+    private static readonly (string Key, string DetailKey)[] StepsDualNoCase =
     {
-        ("双耳就位，等 10 秒", "把两只耳机打开电源，或从充电仓取出（如果耳机有仓），放在电脑旁边，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。这类耳机的充电仓不会提供电量数据（或没有充电仓），全程只需关注左右两只耳机。"),
-        ("隔离左耳，等 10 秒", "把左耳关机，或放回充电仓并合上仓盖（右耳保持在外），等待约 10 秒。"),
-        ("左耳归队，等 10 秒", "把左耳重新开机，或从仓中取出，恢复双耳在外，等待约 10 秒。"),
-        ("隔离右耳，等 10 秒", "把右耳关机，或放回充电仓并合上仓盖（左耳保持在外），等待约 10 秒。"),
-        ("右耳归队，完成采集", "把右耳重新开机，或从仓中取出，双耳在外等待约 10 秒，然后点击「完成并上传」。数据应只有左右耳两个电量字段，没有充电仓电量。"),
+        ("wizard.dnc1T", "wizard.dnc1D"),
+        ("wizard.dnc2T", "wizard.dnc2D"),
+        ("wizard.dnc3T", "wizard.dnc3D"),
+        ("wizard.dnc4T", "wizard.dnc4D"),
+        ("wizard.dnc5T", "wizard.dnc5D"),
     };
 
     // 仅单耳（无充电仓）：只有一只耳机，观察开机/使用/静置/重启的状态差别
-    private static readonly (string Title, string Detail)[] StepsMono =
+    private static readonly (string Key, string DetailKey)[] StepsMono =
     {
-        ("开机，靠近电脑等 10 秒", "打开耳机电源，放在电脑旁边，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。这类耳机没有充电仓，全程只需关注这一只耳机的数据。"),
-        ("戴上使用，等 10 秒", "戴上耳机正常使用（播放或暂停都可以），等待约 10 秒。"),
-        ("摘下静置，等 10 秒", "把耳机摘下来放在桌上（保持开机），等待约 10 秒。"),
-        ("再戴上，等 10 秒", "再次戴上耳机使用，等待约 10 秒。"),
-        ("重启耳机，完成采集", "把耳机关机，等约 5 秒后重新开机，再等待约 10 秒，然后点击「完成并上传」。"),
+        ("wizard.mono1T", "wizard.mono1D"),
+        ("wizard.mono2T", "wizard.mono2D"),
+        ("wizard.mono3T", "wizard.mono3D"),
+        ("wizard.mono4T", "wizard.mono4D"),
+        ("wizard.mono5T", "wizard.mono5D"),
     };
 
     private readonly CaptureService _capture = new();
@@ -986,12 +1141,13 @@ public partial class MainWindow : Window
     private int _captureShown = -1;
     private Border[]? _dots;
 
-    private (string Title, string Detail)[] CurrentSteps() => _layout switch
-    {
-        LayoutMono => StepsMono,
-        LayoutDualNoCase => StepsDualNoCase,
-        _ => StepsDual,
-    };
+    private (string Title, string Detail)[] CurrentSteps() =>
+        (_layout switch
+        {
+            LayoutMono => StepsMono,
+            LayoutDualNoCase => StepsDualNoCase,
+            _ => StepsDual,
+        }).Select(s => (L.T(s.Key), L.T(s.DetailKey))).ToArray();
 
     private string SelectedLayout() =>
         LayoutOptionDualNoCase.IsChecked == true ? LayoutDualNoCase :
@@ -1000,40 +1156,42 @@ public partial class MainWindow : Window
     private void ShowAdapterList(bool instant)
     {
         _adapterPage = -1;
-        AdapterTitle.Text = "适配名单";
+        AdapterTitle.Text = L.T("adapter.listTitle");
         // 已适配（绿色）+ 实测确认不支持分耳的机型（红色，悬停看分析结论）
         var entries = XiaomiAdvParser.GetSupportedNames()
-            .Select(n => new ModelEntry(n, true, "厂商 BLE 广播私有协议，可实时解析左右耳与充电仓电量"))
-            .Concat(UnsupportedModels)
+            .Select(n => new ModelEntry(n, true, L.T("adapter.supportedNote")))
+            .Concat(UnsupportedModels.Select(m => new ModelEntry(
+                m.Name, false, L.T(m.NoteKey))))
             .ToList();
         ModelList.ItemsSource = entries;
         ShowOnlyAdapterPage(AdapterListPage);
         DotsRow.Visibility = Visibility.Collapsed;
         LiveBox.Visibility = Visibility.Collapsed;
-        AdapterBackButton.Content = "取消";
-        AdapterMainButtonText.Text = "适配新耳机 ›";
+        AdapterBackButton.Content = L.T("wizard.cancel");
+        AdapterMainButtonText.Text = L.T("wizard.startAdapter");
         AnimateWindowHeight(AdapterListHeight, instant);
         AnimateAdapterView(instant);
     }
 
-    /// <summary>适配名单条目（含已验证不支持分耳电量的机型）。</summary>
-    public sealed record ModelEntry(string Name, bool Supported, string Note);
+    /// <summary>适配名单条目（含已验证不支持分耳电量的机型）。Badge/Note 随当前语言解析。</summary>
+    public sealed record ModelEntry(string Name, bool Supported, string Note)
+    {
+        public string Badge => Supported ? L.T("adapter.supported") : L.T("adapter.unsupportedBadge");
+    }
 
     /// <summary>
     /// 实测确认广播不含电量、无法适配分耳的机型（随 Issue 分析结论更新）。
+    /// Note 存文案 key，显示时经 L.T 按当前语言解析。
     /// </summary>
-    private static readonly ModelEntry[] UnsupportedModels =
+    private static readonly (string Name, string NoteKey)[] UnsupportedModels =
     {
-        new("SOAIY GD31", false,
-            "两次采集共 244 包实测：蓝牙广播仅含序列号帧（ASCII SN）与自身 MAC 帧，20 分钟零变化，" +
-            "不含电量数据。电量仅经经典蓝牙 AVRCP 上报整机电量，软件以绿色小字显示。" +
-            "分析结论见 GitHub Issue #1。"),
+        ("SOAIY GD31", "adapter.unsupportedNote"),
     };
 
     private void ShowAdapterPage(int page)
     {
         _adapterPage = page;
-        AdapterTitle.Text = "适配新耳机";
+        AdapterTitle.Text = L.T("adapter.wizardTitle");
 
         if (page >= 1)
         {
@@ -1041,18 +1199,19 @@ public partial class MainWindow : Window
             var (title, detail) = CurrentSteps()[page - 1];
             ((TextBlock)FindName($"StepTitle{page}")!).Text = title;
             ((TextBlock)FindName($"StepDetail{page}")!).Text = detail;
+            ((TextBlock)FindName($"StepNum{page}")!).Text = L.F("wizard.stepFmt", page);
         }
 
         ShowOnlyAdapterPage(page == 0 ? (UIElement)AdapterPage0 : (UIElement)FindName($"AdapterPage{page}")!);
         DotsRow.Visibility = Visibility.Visible;
         BuildAdapterDots(page);
         LiveBox.Visibility = page >= 1 ? Visibility.Visible : Visibility.Collapsed;
-        AdapterBackButton.Content = _adapterRunning ? "取消" : "‹ 返回";
+        AdapterBackButton.Content = _adapterRunning ? L.T("wizard.cancel") : L.T("settings.back");
         AdapterMainButtonText.Text = page switch
         {
-            0 => "开始采集",
-            5 => "完成并上传",
-            _ => $"下一步（{page}/5）",
+            0 => L.T("wizard.beginCapture"),
+            5 => L.T("wizard.finishUpload"),
+            _ => L.F("wizard.nextFmt", page),
         };
         AnimateWindowHeight(AdapterWizardHeight, instant: false);
         AnimateAdapterView(instant: false);
@@ -1156,7 +1315,7 @@ public partial class MainWindow : Window
             ShowAdapterList(instant: false);
             return;
         }
-        if (MessageBox.Show(this, "采集进行中，确定取消并丢弃已采集的数据吗？", "适配新耳机",
+        if (MessageBox.Show(this, L.T("wizard.cancelConfirm"), L.T("adapter.wizardTitle"),
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
         {
             return;
@@ -1179,6 +1338,7 @@ public partial class MainWindow : Window
             var model = ModelBox.Text.Trim();
             if (model.Length == 0 || model == ModelPlaceholder)
             {
+                ModelHint.Text = L.T("wizard.modelHint");
                 ModelHint.Visibility = Visibility.Visible;
                 ModelBox.Focus();
                 return;
@@ -1216,16 +1376,17 @@ public partial class MainWindow : Window
             : string.Join(" / ", _capture.ProductKeys);
 
         LiveText.Text = _adapterRunning
-            ? $"已捕获 {_capture.Count} 包 · 公司代号: {cids} · 产品标识: {keys}"
-            : "等待开始采集…";
+            ? L.F("wizard.capturedFmt", _capture.Count, cids, keys)
+            : L.T("wizard.waitingCapture");
     }
 
     private void ModelBox_GotFocus(object sender, RoutedEventArgs e)
     {
-        if (ModelBox.Text == ModelPlaceholder)
+        if (_modelShowingPlaceholder)
         {
             ModelBox.Text = "";
             ModelBox.Foreground = new SolidColorBrush(InputColor);
+            _modelShowingPlaceholder = false;
         }
     }
 
@@ -1235,6 +1396,7 @@ public partial class MainWindow : Window
         {
             ModelBox.Text = ModelPlaceholder;
             ModelBox.Foreground = new SolidColorBrush(PlaceholderColor);
+            _modelShowingPlaceholder = true;
         }
     }
 
@@ -1244,7 +1406,7 @@ public partial class MainWindow : Window
         try
         {
             var model = ModelBox.Text.Trim();
-            if (model.Length == 0) model = "未知型号";
+            if (model.Length == 0) model = L.T("wizard.unknownModel");
             _capture.AddMarker("结束采集");
             var (jsonl, zip) = _capture.Export(model, _layout);
 
@@ -1274,19 +1436,15 @@ public partial class MainWindow : Window
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 
             MessageBox.Show(this,
-                $"采集完成，共 {_capture.Count} 包。\n\n" +
-                $"本地分析已生成候选布局报告（{Path.GetFileName(analysisPath)}），" +
-                "已随 Issue 预填，通常无需人工逐包分析。\n\n" +
-                "浏览器已打开 GitHub Issue 页面，请把该 zip 文件拖进评论框提交。" +
-                "开发者复核后登记解析档案，随软件更新加入你的机型支持。",
-                "导出成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                L.F("wizard.doneMsgFmt", _capture.Count, Path.GetFileName(analysisPath)),
+                L.T("wizard.doneTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
             _adapterRunning = false;
             _capture.Dispose();
             ShowMainView();
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"导出失败：{ex.Message}", "错误",
+            MessageBox.Show(this, L.F("wizard.failFmt", ex.Message), L.T("wizard.failTitle"),
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally

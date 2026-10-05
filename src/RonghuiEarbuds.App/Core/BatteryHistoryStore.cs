@@ -30,13 +30,15 @@ public sealed class BatteryHistoryStore
 
     private readonly Dictionary<string, MacStream> _streams = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
+    private readonly AppConfig? _config;
 
     private static string RootDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "RonghuiEarbuds", "history");
 
-    public BatteryHistoryStore()
+    public BatteryHistoryStore(AppConfig? config = null)
     {
+        _config = config;
         try { CleanupOldFiles(); }
         catch { /* 清理失败不影响主流程 */ }
     }
@@ -44,6 +46,7 @@ public sealed class BatteryHistoryStore
     /// <summary>广播快照落库（只在数值变化或超时心跳时写盘）。</summary>
     public void Record(string mac, BatterySnapshot s)
     {
+        if (_config is { HistoryEnabled: false }) return;   // 设置里关闭：不记录、不建目录
         lock (_gate)
         {
             var st = StreamFor(mac, DateTime.Now);
@@ -57,6 +60,7 @@ public sealed class BatteryHistoryStore
     public void RecordSystem(string mac, int? value)
     {
         if (value is null) return;
+        if (_config is { HistoryEnabled: false }) return;
         lock (_gate)
         {
             var st = StreamFor(mac, DateTime.Now);
@@ -174,7 +178,7 @@ public sealed class BatteryHistoryStore
 
             if (charging)
             {
-                estimate = "充电中";
+                estimate = L.T("battery.charging");
             }
             else if (recent.Count >= 2)
             {
@@ -187,9 +191,11 @@ public sealed class BatteryHistoryStore
                     var remainHours = lastV / (delta / hours);
                     estimate = remainHours switch
                     {
-                        >= 1.5 => $"约 {(int)Math.Floor(remainHours)} 小时 {(int)Math.Round((remainHours - Math.Floor(remainHours)) * 60)} 分",
-                        >= 0.2 => $"约 {Math.Max(1, (int)Math.Round(remainHours * 60))} 分钟",
-                        _ => "不足 10 分钟",
+                        >= 1.5 => L.F("battery.hoursMinFmt",
+                            (int)Math.Floor(remainHours),
+                            (int)Math.Round((remainHours - Math.Floor(remainHours)) * 60)),
+                        >= 0.2 => L.F("battery.minutesFmt", Math.Max(1, (int)Math.Round(remainHours * 60))),
+                        _ => L.T("battery.lessThan10"),
                     };
                 }
             }

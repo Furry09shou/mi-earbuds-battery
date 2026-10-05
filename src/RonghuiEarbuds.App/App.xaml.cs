@@ -39,6 +39,7 @@ public partial class App : Application
         Core.EarbudsWatcher.DiagLog("启动：单实例检查通过");
 
         _config = AppConfig.Load();
+        Core.L.Initialize(_config.Language);   // 界面语言：system/zh/en（system 按系统 UI 文化解析）
         Core.ThemeManager.Initialize(_config);   // 深浅主题：默认跟随 Windows，可手动切换
         AutoStartHelper.EnsureMinimizedFlag();   // 旧版自启动值升级为托盘启动
         _watcher = new EarbudsWatcher(_config);
@@ -154,8 +155,8 @@ public partial class App : Application
             var info = await UpdateChecker.CheckAsync();
             if (info is null) return;
             await Dispatcher.InvokeAsync(() => _tray?.ShowUpdateBalloon(
-                $"新版本 v{info.Version} 可用",
-                "点击此气泡打开下载页，或在主面板点“检查更新”", info.Url));
+                Core.L.F("update.availableFmt", info.Version),
+                Core.L.T("update.clickMsg"), info.Url));
         }
         catch { /* 无网络/接口异常时静默跳过 */ }
     }

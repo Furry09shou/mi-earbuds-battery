@@ -72,6 +72,32 @@
             <Setter Property="Foreground" Value="{DynamicResource T.Accent}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+        <!-- 设置页分段按钮（外观/语言三选一）：选中态由代码切换描边与前景 -->
+        <Style x:Key="SegmentButton" TargetType="Button">
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="Foreground" Value="{DynamicResource T.TextSecondary}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource T.InputBorder}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="B" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="7" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="B" Property="Background" Value="{DynamicResource T.HoverBg}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border x:Name="RootBorder" CornerRadius="14" Background="{DynamicResource T.WindowBg}"
@@ -96,7 +122,7 @@
                     <StackPanel Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="&#xE702;" FontFamily="Segoe MDL2 Assets" FontSize="13"
                                    Foreground="{DynamicResource T.Accent}" VerticalAlignment="Center"/>
-                        <TextBlock Text="绒汇耳机助手" Margin="8,0,0,0" FontSize="13" FontWeight="SemiBold"
+                        <TextBlock x:Name="LblAppTitle" Text="绒汇耳机助手" Margin="8,0,0,0" FontSize="13" FontWeight="SemiBold"
                                    Foreground="{DynamicResource T.TextPrimary}" VerticalAlignment="Center"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
@@ -233,7 +259,7 @@
                                 <ui:BatteryRing x:Name="LeftRing" Width="86" Height="86"
                                                 VerticalAlignment="Center" Level="-1"/>
                                 <StackPanel Grid.Column="1" Margin="12,0,2,0" VerticalAlignment="Center">
-                                    <TextBlock Text="左耳" FontSize="13.5" FontWeight="SemiBold"
+                                    <TextBlock x:Name="LblLeftTitle" Text="左耳" FontSize="13.5" FontWeight="SemiBold"
                                                Foreground="{DynamicResource T.TextPrimary}"/>
                                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                         <Path x:Name="LeftBolt" Visibility="Collapsed"
@@ -258,7 +284,7 @@
                                 <ui:BatteryRing x:Name="RightRing" Width="86" Height="86"
                                                 VerticalAlignment="Center" Level="-1"/>
                                 <StackPanel Grid.Column="1" Margin="12,0,2,0" VerticalAlignment="Center">
-                                    <TextBlock Text="右耳" FontSize="13.5" FontWeight="SemiBold"
+                                    <TextBlock x:Name="LblRightTitle" Text="右耳" FontSize="13.5" FontWeight="SemiBold"
                                                Foreground="{DynamicResource T.TextPrimary}"/>
                                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                         <Path x:Name="RightBolt" Visibility="Collapsed"
@@ -283,7 +309,7 @@
                             </Grid.ColumnDefinitions>
                             <ui:BatteryRing x:Name="CaseRing" Width="86" Height="86" Level="-1"/>
                             <StackPanel Grid.Column="1" Margin="12,0,2,0" VerticalAlignment="Center">
-                                <TextBlock Text="充电仓" FontSize="13.5" FontWeight="SemiBold"
+                                <TextBlock x:Name="LblCaseTitle" Text="充电仓" FontSize="13.5" FontWeight="SemiBold"
                                            Foreground="{DynamicResource T.TextPrimary}"/>
                                 <TextBlock x:Name="CaseStatusText" Margin="0,6,0,0" FontSize="11.5"
                                            Foreground="{DynamicResource T.TextSecondary}" Text="--"/>
@@ -305,7 +331,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="今日已用" FontSize="11"
+                                <TextBlock x:Name="LblStatsUsedLabel" Text="今日已用" FontSize="11"
                                            Foreground="{DynamicResource T.TextSecondary}" VerticalAlignment="Bottom"/>
                                 <TextBlock x:Name="StatsUsedText" Text="--" FontSize="15" FontWeight="Bold"
                                            Foreground="{DynamicResource T.TextPrimary}" Margin="6,0,0,0"
@@ -336,7 +362,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="11"
                                            VerticalAlignment="Center"/>
-                                <TextBlock Text="设置" FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="LblSettingsBtnText" Text="设置" FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <StackPanel Grid.Column="2" Orientation="Horizontal">
@@ -364,7 +390,7 @@
                     <StackPanel Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="&#xE702;" FontFamily="Segoe MDL2 Assets" FontSize="13"
                                    Foreground="{DynamicResource T.Accent}" VerticalAlignment="Center"/>
-                        <TextBlock Text="设置" Margin="8,0,0,0" FontSize="13"
+                        <TextBlock x:Name="LblSettingsViewTitle" Text="设置" Margin="8,0,0,0" FontSize="13"
                                    FontWeight="SemiBold" Foreground="{DynamicResource T.TextPrimary}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
@@ -380,7 +406,7 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="20,0,20,0">
                     <StackPanel>
 
-                        <TextBlock Text="提醒" Style="{StaticResource SectionHeader}" Margin="2,2,0,6"/>
+                        <TextBlock x:Name="LblSecAlerts" Text="提醒" Style="{StaticResource SectionHeader}" Margin="2,2,0,6"/>
                         <Border Style="{StaticResource SettingsCard}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -388,8 +414,8 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="低电量提醒阈值" Style="{StaticResource SettingTitle}"/>
-                                    <TextBlock Text="电量低于阈值时弹托盘提醒" Style="{StaticResource SettingSub}"/>
+                                    <TextBlock x:Name="LblLowThresholdTitle" Text="低电量提醒阈值" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblLowThresholdSub" Text="电量低于阈值时弹托盘提醒" Style="{StaticResource SettingSub}"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock x:Name="LowThresholdValue" Text="20%" FontSize="13"
@@ -409,8 +435,8 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="提醒勿扰时段" Style="{StaticResource SettingTitle}"/>
-                                    <TextBlock Text="时段内不弹低电量与骤降提醒" Style="{StaticResource SettingSub}"/>
+                                    <TextBlock x:Name="LblQuietTitle" Text="提醒勿扰时段" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblQuietSub" Text="时段内不弹低电量与骤降提醒" Style="{StaticResource SettingSub}"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                     <Button x:Name="QuietHoursButton" Style="{StaticResource GhostButton}"
@@ -428,8 +454,8 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="电量骤降提醒" Style="{StaticResource SettingTitle}"/>
-                                    <TextBlock Text="10 分钟内下降超过 20% 时提醒（每小时最多一次）"
+                                    <TextBlock x:Name="LblDropTitle" Text="电量骤降提醒" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblDropSub" Text="10 分钟内下降超过 20% 时提醒（每小时最多一次）"
                                                Style="{StaticResource SettingSub}"/>
                                 </StackPanel>
                                 <CheckBox x:Name="DropAlertCheck" Grid.Column="1" Style="{StaticResource ToggleCheck}"
@@ -437,7 +463,7 @@
                             </Grid>
                         </Border>
 
-                        <TextBlock Text="弹窗" Style="{StaticResource SectionHeader}" Margin="2,10,0,6"/>
+                        <TextBlock x:Name="LblSecPopup" Text="弹窗" Style="{StaticResource SectionHeader}" Margin="2,10,0,6"/>
                         <Border Style="{StaticResource SettingsCard}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -445,8 +471,8 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="开盖自动弹出主窗口" Style="{StaticResource SettingTitle}"/>
-                                    <TextBlock Text="耳机开盖广播到达时拉起主面板到最上层" Style="{StaticResource SettingSub}"/>
+                                    <TextBlock x:Name="LblPopupTitle" Text="开盖自动弹出主窗口" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblPopupSub" Text="耳机开盖广播到达时拉起主面板到最上层" Style="{StaticResource SettingSub}"/>
                                 </StackPanel>
                                 <CheckBox x:Name="PopupCheck" Grid.Column="1" Style="{StaticResource ToggleCheck}"
                                           Checked="PopupCheck_Changed" Unchecked="PopupCheck_Changed"/>
@@ -459,8 +485,8 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="弹窗冷却时间" Style="{StaticResource SettingTitle}"/>
-                                    <TextBlock Text="两次弹窗的最小间隔，避免反复打扰" Style="{StaticResource SettingSub}"/>
+                                    <TextBlock x:Name="LblCooldownTitle" Text="弹窗冷却时间" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblCooldownSub" Text="两次弹窗的最小间隔，避免反复打扰" Style="{StaticResource SettingSub}"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock x:Name="CooldownValue" Text="5 分钟" FontSize="12.5"
@@ -474,7 +500,7 @@
                             </Grid>
                         </Border>
 
-                        <TextBlock Text="悬浮条" Style="{StaticResource SectionHeader}" Margin="2,10,0,6"/>
+                        <TextBlock x:Name="LblSecMini" Text="悬浮条" Style="{StaticResource SectionHeader}" Margin="2,10,0,6"/>
                         <Border Style="{StaticResource SettingsCard}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -482,8 +508,8 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="显示悬浮电量条" Style="{StaticResource SettingTitle}"/>
-                                    <TextBlock Text="可拖动的极简置顶小条；拖动后位置自动记住，双击打开主面板"
+                                    <TextBlock x:Name="LblMiniTitle" Text="显示悬浮电量条" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblMiniSub" Text="可拖动的极简置顶小条；拖动后位置自动记住，双击打开主面板"
                                                Style="{StaticResource SettingSub}"/>
                                 </StackPanel>
                                 <CheckBox x:Name="MiniBarCheck" Grid.Column="1" Style="{StaticResource ToggleCheck}"
@@ -491,7 +517,7 @@
                             </Grid>
                         </Border>
 
-                        <TextBlock Text="通用" Style="{StaticResource SectionHeader}" Margin="2,10,0,6"/>
+                        <TextBlock x:Name="LblSecGeneral" Text="通用" Style="{StaticResource SectionHeader}" Margin="2,10,0,6"/>
                         <Border Style="{StaticResource SettingsCard}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -499,29 +525,64 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="开机自启" Style="{StaticResource SettingTitle}"/>
-                                    <TextBlock Text="登录 Windows 后自动启动并收进托盘" Style="{StaticResource SettingSub}"/>
+                                    <TextBlock x:Name="LblAutoStartTitle" Text="开机自启" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblAutoStartSub" Text="登录 Windows 后自动启动并收进托盘" Style="{StaticResource SettingSub}"/>
                                 </StackPanel>
                                 <CheckBox x:Name="AutoStartCheck" Grid.Column="1" Style="{StaticResource ToggleCheck}"
                                           Checked="AutoStartCheck_Changed" Unchecked="AutoStartCheck_Changed"/>
                             </Grid>
                         </Border>
                         <Border Style="{StaticResource SettingsCard}">
+                            <StackPanel>
+                                <TextBlock x:Name="LblThemeTitle" Text="外观" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock x:Name="LblThemeSub" Text="深浅主题可手动切换，默认跟随 Windows 系统设置"
+                                           Style="{StaticResource SettingSub}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+                                    <Button x:Name="ThemeBtnSystem" Style="{StaticResource SegmentButton}" Tag="system"
+                                            Content="跟随系统" Click="ThemeSegment_Click"/>
+                                    <Button x:Name="ThemeBtnDark" Style="{StaticResource SegmentButton}" Tag="dark"
+                                            Content="深色" Margin="6,0,0,0" Click="ThemeSegment_Click"/>
+                                    <Button x:Name="ThemeBtnLight" Style="{StaticResource SegmentButton}" Tag="light"
+                                            Content="浅色" Margin="6,0,0,0" Click="ThemeSegment_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SettingsCard}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="外观" Style="{StaticResource SettingTitle}"/>
-                                    <TextBlock Text="深浅主题可手动切换，默认跟随 Windows 系统设置"
+                                    <TextBlock x:Name="LblHistoryTitle" Text="电量记录" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblHistorySub" Text="关闭后停止记录电量历史，已有数据保留"
                                                Style="{StaticResource SettingSub}"/>
                                 </StackPanel>
-                                <Button x:Name="ThemeButton" Grid.Column="1" Style="{StaticResource GhostButton}"
-                                        Content="跟随系统" Click="ThemeButton_Click" Margin="10,0,0,0"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button x:Name="OpenHistoryFolderButton" Style="{StaticResource GhostButton}"
+                                            Content="打开文件夹" FontSize="11" Padding="8,4"
+                                            Click="OpenHistoryFolderButton_Click" Margin="0,0,10,0"/>
+                                    <CheckBox x:Name="HistoryCheck" Style="{StaticResource ToggleCheck}"
+                                              Checked="HistoryCheck_Changed" Unchecked="HistoryCheck_Changed"/>
+                                </StackPanel>
                             </Grid>
                         </Border>
-                        <TextBlock TextWrapping="Wrap" FontSize="10" Margin="2,2,0,10"
+                        <Border Style="{StaticResource SettingsCard}">
+                            <StackPanel>
+                                <TextBlock x:Name="LblLangTitle" Text="语言" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock x:Name="LblLangSub" Text="切换界面显示语言，立即生效"
+                                           Style="{StaticResource SettingSub}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+                                    <Button x:Name="LangBtnSystem" Style="{StaticResource SegmentButton}" Tag="system"
+                                            Content="跟随系统" Click="LangSegment_Click"/>
+                                    <Button x:Name="LangBtnZh" Style="{StaticResource SegmentButton}" Tag="zh"
+                                            Content="中文" Margin="6,0,0,0" Click="LangSegment_Click"/>
+                                    <Button x:Name="LangBtnEn" Style="{StaticResource SegmentButton}" Tag="en"
+                                            Content="English" Margin="6,0,0,0" Click="LangSegment_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock x:Name="LblHistoryNote" TextWrapping="Wrap" FontSize="10" Margin="2,2,0,10"
                                    Foreground="{DynamicResource T.TextDim}"
                                    Text="电量历史仅保存在本机 %APPDATA%\RonghuiEarbuds\history（保留 7 天），用于「今日已用」「预计可用」与当日曲线，不上传任何数据。"/>
 
@@ -571,7 +632,7 @@
 
                     <!-- 名单页 -->
                     <StackPanel x:Name="AdapterListPage">
-                        <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource T.TextSecondary}"
+                        <TextBlock x:Name="LblAdapterListIntro" TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource T.TextSecondary}"
                                    Text="绿色机型已完成协议适配，红色机型因设备原因无法适配。"/>
                         <ItemsControl x:Name="ModelList" Margin="0,12,0,0">
                             <ItemsControl.ItemTemplate>
@@ -592,7 +653,7 @@
                                                            VerticalAlignment="Center"/>
                                                 <Border x:Name="BadgeBg" Background="#243A28" CornerRadius="5"
                                                         Padding="7,2" Margin="10,0,0,0" VerticalAlignment="Center">
-                                                    <TextBlock x:Name="BadgeText" Text="已支持" FontSize="10"
+                                                    <TextBlock x:Name="BadgeText" Text="{Binding Badge}" FontSize="10"
                                                                Foreground="{DynamicResource T.Good}"/>
                                                 </Border>
                                             </StackPanel>
@@ -611,7 +672,6 @@
                                             <Setter TargetName="IconGlyph" Property="Foreground"
                                                     Value="{DynamicResource T.Low}"/>
                                             <Setter TargetName="BadgeBg" Property="Background" Value="#3A2626"/>
-                                            <Setter TargetName="BadgeText" Property="Text" Value="不支持分耳"/>
                                             <Setter TargetName="BadgeText" Property="Foreground"
                                                     Value="{DynamicResource T.Low}"/>
                                         </DataTrigger>
@@ -619,19 +679,19 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource T.TextSecondary}"
+                        <TextBlock x:Name="LblAdapterListHint" TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource T.TextSecondary}"
                                    Margin="0,4,0,0"
                                    Text="没找到你的耳机？点右下角「适配新耳机」，按向导采集广播数据即可众包适配。"/>
                     </StackPanel>
 
                     <!-- 向导页 0：写入型号 -->
                     <StackPanel x:Name="AdapterPage0" Visibility="Collapsed">
-                        <TextBlock Text="先写下耳机型号" FontSize="20" FontWeight="Bold"
+                        <TextBlock x:Name="LblWizardModelTitle" Text="先写下耳机型号" FontSize="20" FontWeight="Bold"
                                    Foreground="{DynamicResource T.TextPrimary}"/>
-                        <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource T.TextSecondary}"
+                        <TextBlock x:Name="LblWizardModelBody" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource T.TextSecondary}"
                                    Margin="0,8,0,0"
                                    Text="你的耳机型号暂不受支持？按向导做几个简单动作，软件会记录耳机的广播数据。数据不含个人隐私，导出后上传到 GitHub 供开发者分析适配。"/>
-                        <TextBlock Text="耳机型号名称" FontSize="11.5" Foreground="{DynamicResource T.TextPrimary}"
+                        <TextBlock x:Name="LblWizardModelLabel" Text="耳机型号名称" FontSize="11.5" Foreground="{DynamicResource T.TextPrimary}"
                                    Margin="0,14,0,6"/>
                         <TextBox x:Name="ModelBox" Style="{StaticResource ModelBoxStyle}"
                                  Text="例如：Redmi Buds 5"
@@ -639,7 +699,7 @@
                         <TextBlock x:Name="ModelHint" Text="请先填写耳机型号" FontSize="11"
                                    Foreground="{DynamicResource T.Low}"
                                    Margin="2,6,0,0" Visibility="Collapsed"/>
-                        <TextBlock Text="耳机形态" FontSize="11.5" Foreground="{DynamicResource T.TextPrimary}"
+                        <TextBlock x:Name="LblWizardLayoutLabel" Text="耳机形态" FontSize="11.5" Foreground="{DynamicResource T.TextPrimary}"
                                    Margin="0,16,0,2"/>
                         <StackPanel>
                             <RadioButton x:Name="LayoutOptionDualCase" GroupName="DeviceLayout" IsChecked="True"
@@ -652,7 +712,7 @@
                                          Content="仅单耳耳机，无充电仓" FontSize="12.5"
                                          Foreground="{DynamicResource T.TextPrimary}" Margin="0,3,0,0"/>
                         </StackPanel>
-                        <TextBlock TextWrapping="Wrap" FontSize="10.5" Foreground="{DynamicResource T.TextDim}"
+                        <TextBlock x:Name="LblWizardLayoutNote" TextWrapping="Wrap" FontSize="10.5" Foreground="{DynamicResource T.TextDim}"
                                    Margin="0,8,0,0"
                                    Text="形态决定采集动作与电量字段数量（单耳没有左右之分；无仓形态不会出现充电仓电量字段）。选择会随数据一起提交，帮助开发者正确识别布局。"/>
                     </StackPanel>

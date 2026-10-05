@@ -23,7 +23,7 @@ public sealed class TrayController : IDisposable
     public Action? ToggleMiniBarRequested { get; init; }
     public Action? ExitRequested { get; init; }
 
-    private readonly WinForms.ToolStripMenuItem _miniBarItem;
+    private WinForms.ToolStripMenuItem _miniBarItem = new();
 
     public TrayController(EarbudsWatcher watcher, AppConfig config)
     {
@@ -31,24 +31,12 @@ public sealed class TrayController : IDisposable
         _icon = new WinForms.NotifyIcon
         {
             Visible = true,
-            Text = "绒汇耳机助手",
+            Text = L.T("main.title"),
         };
         SetIcon(null);
 
-        _miniBarItem = new WinForms.ToolStripMenuItem("显示悬浮电量条")
-        {
-            CheckOnClick = true,
-            Checked = _config.MiniBarEnabled,
-        };
-        _miniBarItem.Click += (_, _) => ToggleMiniBarRequested?.Invoke();
-
-        var menu = new WinForms.ContextMenuStrip();
-        menu.Items.Add("显示主面板", null, (_, _) => ShowWindowRequested?.Invoke());
-        menu.Items.Add("设置", null, (_, _) => ShowSettingsRequested?.Invoke());
-        menu.Items.Add(_miniBarItem);
-        menu.Items.Add(new WinForms.ToolStripSeparator());
-        menu.Items.Add("退出", null, (_, _) => ExitRequested?.Invoke());
-        _icon.ContextMenuStrip = menu;
+        BuildMenu();
+        L.Changed += OnLanguageChanged;
 
         _icon.MouseClick += (_, e) =>
         {
@@ -58,7 +46,40 @@ public sealed class TrayController : IDisposable
 
         watcher.DeviceBound += name =>
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                ShowBalloon($"已绑定 {name}", "打开充电仓盖即可查看电量"));
+                ShowBalloon(L.F("tray.boundFmt", name), L.T("tray.boundMsg")));
+    }
+
+    /// <summary>按当前语言构建托盘右键菜单（语言切换时整体重建）。</summary>
+    private void BuildMenu()
+    {
+        _miniBarItem = new WinForms.ToolStripMenuItem(L.T("tray.miniBar"))
+        {
+            CheckOnClick = true,
+            Checked = _config.MiniBarEnabled,
+        };
+        _miniBarItem.Click += (_, _) => ToggleMiniBarRequested?.Invoke();
+
+        var menu = new WinForms.ContextMenuStrip();
+        menu.Items.Add(L.T("tray.showPanel"), null, (_, _) => ShowWindowRequested?.Invoke());
+        menu.Items.Add(L.T("main.settings"), null, (_, _) => ShowSettingsRequested?.Invoke());
+        menu.Items.Add(_miniBarItem);
+        menu.Items.Add(new WinForms.ToolStripSeparator());
+        menu.Items.Add(L.T("tray.exit"), null, (_, _) => ExitRequested?.Invoke());
+        _icon.ContextMenuStrip = menu;
+    }
+
+    private void OnLanguageChanged()
+    {
+        // L.Changed 在 UI 线程触发；托盘句柄也归 UI 线程，直接重建即可
+        var app = System.Windows.Application.Current;
+        if (app is null) return;
+        app.Dispatcher.Invoke(() =>
+        {
+            BuildMenu();
+            _icon.Text = L.T("main.title");
+            if (!_connected) _icon.Text = $"{L.T("main.title")}\n{L.T("state.signalLostShort")}";
+            RefreshFromLast();
+        });
     }
 
     /// <summary>设置界面开关悬浮条后同步托盘菜单勾选态。</summary>
@@ -84,7 +105,7 @@ public sealed class TrayController : IDisposable
         _connected = connected;
         if (!connected)
         {
-            _icon.Text = "绒汇耳机助手\n信号丢失 · 打开仓盖刷新";
+            _icon.Text = $"{L.T("main.title")}\n{L.T("state.signalLostShort")}";
         }
     }
 
@@ -98,8 +119,8 @@ public sealed class TrayController : IDisposable
 
         string? fmt(int? v) => v is null ? "--" : v.Value.ToString();
         var name = _last?.DisplayName;
-        if (string.IsNullOrWhiteSpace(name)) name = "耳机";
-        var tip = $"{name}\n左耳 {fmt(s.LeftPercent)}%   右耳 {fmt(s.RightPercent)}%\n充电仓 {fmt(s.CasePercent)}%";
+        if (string.IsNullOrWhiteSpace(name)) name = L.T("mini.earbuds");
+        var tip = L.F("tray.tipFmt", name, fmt(s.LeftPercent), fmt(s.RightPercent), fmt(s.CasePercent));
         _icon.Text = tip.Length <= 63 ? tip : tip[..63];
     }
 
@@ -145,6 +166,7 @@ public sealed class TrayController : IDisposable
 
     public void Dispose()
     {
+        L.Changed -= OnLanguageChanged;
         _icon.Dispose();
         _currentIcon?.Dispose();
         _currentBitmap?.Dispose();

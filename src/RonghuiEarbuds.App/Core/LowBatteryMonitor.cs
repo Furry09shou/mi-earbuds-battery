@@ -40,9 +40,9 @@ public sealed class LowBatteryMonitor
             if (drop >= 20 && (now - oldest.Time).TotalMinutes <= 10)
             {
                 _lastDropAlert = now;
-                _alert("耳机电量骤降",
-                    $"约 {(int)Math.Round((now - oldest.Time).TotalMinutes)} 分钟内下降 {drop}%（当前 {v}%），" +
-                    "可能异常耗电或触点误报");
+                _alert(L.T("battery.dropTitle"),
+                    L.F("battery.dropMsgFmt",
+                        (int)Math.Round((now - oldest.Time).TotalMinutes), drop, v));
                 return;
             }
         }
@@ -52,7 +52,7 @@ public sealed class LowBatteryMonitor
         if (v <= threshold && !_lowWarned && !InQuietHours(now))
         {
             _lowWarned = true;
-            _alert($"耳机电量不足 {threshold}%", "建议把耳机放回充电仓");
+            _alert(L.F("battery.lowTitleFmt", threshold), L.T("battery.lowMsg"));
         }
         else if (v > threshold + 5)
         {

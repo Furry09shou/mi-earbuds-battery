@@ -53,6 +53,12 @@ public sealed class AppConfig
     /// <summary>外观模式：system=跟随 Windows（默认）/ dark=深色 / light=浅色。</summary>
     public string ThemeMode { get; set; } = "system";
 
+    /// <summary>是否记录电量历史（关闭后停止写入，已有数据保留）。</summary>
+    public bool HistoryEnabled { get; set; } = true;
+
+    /// <summary>界面语言：system=跟随系统（默认）/ zh=中文 / en=English。</summary>
+    public string Language { get; set; } = "system";
+
     private static string Dir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RonghuiEarbuds");
     private static string FilePath => Path.Combine(Dir, "config.json");
