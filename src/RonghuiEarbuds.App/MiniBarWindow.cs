@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -113,17 +114,34 @@ public sealed class MiniBarWindow : Window
         outer.Children.Add(root);
         Content = outer;
 
+        // 左键：单击（未拖动）弹设备选择菜单；拖动换位置；双击开主面板
+        Point? pressPos = null;
         MouseLeftButtonDown += (_, e) =>
         {
             if (e.ClickCount == 2)
             {
+                pressPos = null;
                 OpenMainRequested?.Invoke();
                 return;
             }
-            try { DragMove(); } catch { /* 快速点击可能抛异常 */ }
-            PersistPosition();
+            pressPos = e.GetPosition(this);
         };
-        MouseRightButtonUp += (_, _) => OpenDeviceMenu();   // 右键：勾选展开显示的设备
+        MouseLeftButtonUp += (_, e) =>
+        {
+            if (pressPos is { } p && (e.GetPosition(this) - p).Length < 4)
+                OpenDeviceMenu();   // 点击（非拖动）→ 设备选择
+            pressPos = null;
+        };
+        MouseMove += (_, e) =>
+        {
+            if (e.LeftButton == MouseButtonState.Pressed && pressPos is { } p &&
+                (e.GetPosition(this) - p).Length >= 4)
+            {
+                pressPos = null;   // 进入拖动，松手不再算点击
+                try { DragMove(); } catch { /* 快速点击可能抛异常 */ }
+                PersistPosition();
+            }
+        };
 
         ThemeManager.ThemeChanged += () => Dispatcher.Invoke(Render);   // 换肤重刷硬刷的颜色
         _freshTimer.Tick += (_, _) => Render();
@@ -426,20 +444,20 @@ public sealed class MiniBarWindow : Window
         row.NameShift.BeginAnimation(TranslateTransform.XProperty, anim);
     }
 
-    // ---------- 右键菜单（多选勾选展开） ----------
+    // ---------- 设备选择浮层 ----------
 
-    /// <summary>右键弹出设备菜单：勾选=在悬浮条显示该设备行（多选）。</summary>
+    /// <summary>左键点击弹出设备选择浮层：勾选=在悬浮条显示该设备行（多选）。
+    /// 用 Popup 而非 ContextMenu——后者弹出窗口不透明，圆角外的四角和被裁的阴影很难看。</summary>
+    private Popup? _devicePopup;
+
     private void OpenDeviceMenu()
     {
         if (DeviceListProvider?.Invoke() is not { Count: > 0 } devices)
             return;
+        if (_devicePopup is { } old) old.IsOpen = false;
+
         var pinned = new HashSet<string>(_config.MiniBarPinned, StringComparer.OrdinalIgnoreCase);
-        var menu = new ContextMenu
-        {
-            PlacementTarget = this,
-            Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint,
-            Template = MenuTemplate(),
-        };
+        var stack = new StackPanel();
         foreach (var (name, mac) in devices)
         {
             var item = new MenuItem
@@ -458,30 +476,38 @@ public sealed class MiniBarWindow : Window
                 _config.Save();
                 Render();
             };
-            menu.Items.Add(item);
+            stack.Children.Add(item);
         }
-        menu.IsOpen = true;
+
+        var card = new Border
+        {
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(6),
+            Child = stack,
+        };
+        card.SetResourceReference(Border.BackgroundProperty, "T.WindowBg");
+        card.SetResourceReference(Border.BorderBrushProperty, "T.CardBorder");
+        card.BorderThickness = new Thickness(1);
+        card.Effect = new System.Windows.Media.Effects.DropShadowEffect
+        {
+            BlurRadius = 14, ShadowDepth = 2, Opacity = 0.35, Direction = 270,
+        };
+
+        _devicePopup = new Popup
+        {
+            PlacementTarget = this,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint,
+            StaysOpen = false,             // 点外部自动关闭
+            AllowsTransparency = true,     // 分层窗口：圆角外透明、阴影完整渲染
+            PopupAnimation = PopupAnimation.Fade,
+            Child = card,
+        };
+        _devicePopup.IsOpen = true;
     }
 
-    // 菜单模板：与应用弹层同风格（圆角卡片+阴影+悬停高亮+橙色勾选）。
+    // 行条目模板：与应用弹层同风格（圆角+悬停高亮+橙色勾选）。
     // 纯代码构建窗口拿不到隐式样式，用 XamlReader 加载模板并缓存。
-    private static ControlTemplate? _menuTpl, _menuItemTpl;
-
-    private static ControlTemplate MenuTemplate() => _menuTpl ??= (ControlTemplate)
-        System.Windows.Markup.XamlReader.Parse("""
-            <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                             TargetType="{x:Type ContextMenu}">
-              <Border CornerRadius="10" Padding="6"
-                      Background="{DynamicResource T.WindowBg}"
-                      BorderBrush="{DynamicResource T.CardBorder}" BorderThickness="1">
-                <Border.Effect>
-                  <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.35" Direction="270"/>
-                </Border.Effect>
-                <StackPanel IsItemsHost="True"/>
-              </Border>
-            </ControlTemplate>
-            """);
+    private static ControlTemplate? _menuItemTpl;
 
     private static ControlTemplate MenuItemTemplate() => _menuItemTpl ??= (ControlTemplate)
         System.Windows.Markup.XamlReader.Parse("""
