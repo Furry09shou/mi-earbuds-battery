@@ -4,6 +4,32 @@
 
     <Application.Resources>
 
+        <!-- 标题栏语言分段按钮（中文 | English）：选中态描边/前景由代码切换 -->
+        <Style x:Key="SegLangButton" TargetType="Button">
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="Foreground" Value="#8F8F98"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="B" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="7" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="B" Property="Background" Value="#26262C"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="TitleBarButton" TargetType="Button">
             <Setter Property="Width" Value="36"/>
             <Setter Property="Height" Value="28"/>

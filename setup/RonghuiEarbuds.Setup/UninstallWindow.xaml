@@ -27,8 +27,16 @@
                 <StackPanel Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="&#xE702;" FontFamily="Segoe MDL2 Assets" FontSize="13"
                                Foreground="#E87A3E" VerticalAlignment="Center"/>
-                    <TextBlock Text="卸载程序" Margin="8,0,0,0" FontSize="13" FontWeight="SemiBold"
+                    <TextBlock x:Name="LblTitleBar" Text="卸载程序" Margin="8,0,0,0" FontSize="13" FontWeight="SemiBold"
                                Foreground="#EDEDF0" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Margin="0,0,54,0">
+                    <Button x:Name="LangBtnZh" Style="{StaticResource SegLangButton}" Tag="zh" Content="中文"
+                            BorderBrush="#E87A3E" Foreground="#EDEDF0" FontWeight="SemiBold"
+                            Click="LangButton_Click"/>
+                    <Button x:Name="LangBtnEn" Style="{StaticResource SegLangButton}" Tag="en" Content="English"
+                            Margin="6,0,0,0" Click="LangButton_Click"/>
                 </StackPanel>
                 <Button HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"
                         Style="{StaticResource TitleBarButton}" Content="&#xE8BB;"
@@ -44,9 +52,9 @@
                             HorizontalAlignment="Center">
                         <Image x:Name="LogoImage" Width="36" Height="36"/>
                     </Border>
-                    <TextBlock Text="卸载 绒汇耳机助手？" FontSize="16.5" FontWeight="SemiBold"
+                    <TextBlock x:Name="LblConfirmTitle" Text="卸载 绒汇耳机助手？" FontSize="16.5" FontWeight="SemiBold"
                                Foreground="#EDEDF0" HorizontalAlignment="Center" Margin="0,12,0,0"/>
-                    <TextBlock TextWrapping="Wrap" TextAlignment="Center" MaxWidth="360"
+                    <TextBlock x:Name="LblConfirmBody" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="360"
                                FontSize="11.5" Foreground="#8F8F98" Margin="0,6,0,0"
                                Text="将移除程序文件、开机自启项与快捷方式。你的耳机绑定信息可一并删除，或保留供下次安装使用。"/>
                     <StackPanel HorizontalAlignment="Center" Margin="0,16,0,0">
@@ -56,9 +64,9 @@
                     <TextBlock Text="© 绒汇公共交通组织 · RonghuiEarbuds" FontSize="10.5"
                                Foreground="#5C5C66" HorizontalAlignment="Center" Margin="0,14,0,0"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
-                        <Button Style="{StaticResource GhostButton}" Content="取消"
+                        <Button x:Name="CancelButton" Style="{StaticResource GhostButton}" Content="取消"
                                 Click="CloseButton_Click"/>
-                        <Button Style="{StaticResource DangerButton}" Content="卸载" Width="120"
+                        <Button x:Name="UninstallConfirmButton" Style="{StaticResource DangerButton}" Content="卸载" Width="120"
                                 Height="36" Margin="10,0,0,0" Click="UninstallButton_Click"/>
                     </StackPanel>
                 </StackPanel>
@@ -75,7 +83,7 @@
                             </Path.RenderTransform>
                         </Path>
                     </Canvas>
-                    <TextBlock Text="正在卸载…" FontSize="12.5" Foreground="#8F8F98"
+                    <TextBlock x:Name="LblBusyText" Text="正在卸载…" FontSize="12.5" Foreground="#8F8F98"
                                HorizontalAlignment="Center" Margin="0,14,0,0"/>
                 </StackPanel>
 
@@ -92,7 +100,7 @@
                             </TextBlock.RenderTransform>
                         </TextBlock>
                     </Border>
-                    <TextBlock Text="卸载完成" FontSize="16" FontWeight="SemiBold" Foreground="#EDEDF0"
+                    <TextBlock x:Name="LblDoneTitle" Text="卸载完成" FontSize="16" FontWeight="SemiBold" Foreground="#EDEDF0"
                                HorizontalAlignment="Center" Margin="0,14,0,0"/>
                     <TextBlock x:Name="DoneSubText" Text="程序文件已移除" FontSize="11.5"
                                Foreground="#8F8F98" HorizontalAlignment="Center" Margin="0,6,0,0"/>
@@ -110,7 +118,7 @@
                     <TextBlock x:Name="WarnText" TextWrapping="Wrap" TextAlignment="Center"
                                MaxWidth="360" FontSize="12.5" Foreground="#D96A5B" Margin="0,14,0,0"
                                Text=""/>
-                    <Button Style="{StaticResource GhostButton}" Content="关闭" Margin="0,18,0,0"
+                    <Button x:Name="CloseWarnButton" Style="{StaticResource GhostButton}" Content="关闭" Margin="0,18,0,0"
                             HorizontalAlignment="Center" Click="CloseButton_Click"/>
                 </StackPanel>
             </Grid>

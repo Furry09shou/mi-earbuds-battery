@@ -135,7 +135,7 @@ internal static class SetupLogic
     {
         if (full.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.Windows), StringComparison.OrdinalIgnoreCase)
             || full.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.System), StringComparison.OrdinalIgnoreCase))
-            return "不能安装到系统目录，请选择其他位置。";
+            return Loc.T("setup.errSystemDir");
         return null;
     }
 
@@ -169,7 +169,7 @@ internal static class SetupLogic
 
         // 自校验：主程序必须真实存在，否则视为失败且不写任何注册表/快捷方式
         if (!File.Exists(Path.Combine(target, ExeName)))
-            throw new IOException("主程序文件缺失（安装包 payload 不完整），请重新获取安装包。");
+            throw new IOException(Loc.T("setup.errPayloadMissing"));
 
         if (autoStart) SetAutoStart(target);
         if (desktop) MakeShortcut(
@@ -425,7 +425,7 @@ internal static class SetupLogic
             linkType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, link,
                 new object[] { target });
             linkType.InvokeMember("Description", BindingFlags.SetProperty, null, link,
-                new object[] { $"{AppName} - 耳机 BLE 电量监控" });
+                new object[] { $"{AppName} - {Loc.T("setup.shortcutDesc")}" });
             linkType.InvokeMember("Save", BindingFlags.InvokeMethod, null, link, null);
         }
         catch { /* 快捷方式失败不影响安装 */ }

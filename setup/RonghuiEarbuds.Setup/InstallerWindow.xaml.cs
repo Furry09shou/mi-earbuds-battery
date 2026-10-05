@@ -16,6 +16,7 @@ public partial class InstallerWindow : Window
     private bool _isUpgrade;            // true=新版升级，false=同版重装
     private bool _busy;
     private bool _done;
+    private string? _doneTarget;        // 安装/升级完成后记录的目标目录（语言切换时重建完成文案）
 
     public InstallerWindow()
     {
@@ -31,11 +32,8 @@ public partial class InstallerWindow : Window
             _existingPath = existing.Path;
             _isUpgrade = SetupLogic.CompareVersions(VersionText.Text.TrimStart('v'), existing.Version) > 0;
             PathBox.Text = existing.Path;
-            ExistText.Text = _isUpgrade
-                ? $"检测到已安装 v{existing.Version}（位于 {existing.Path}），将升级到 v{VersionText.Text.TrimStart('v')}，配置与绑定保留"
-                : $"检测到已安装 v{existing.Version}（位于 {existing.Path}），将重新安装（旧文件清理后重装）";
             ExistBanner.Visibility = Visibility.Visible;
-            InstallButton.Content = _isUpgrade ? "升级" : "重新安装";
+            UpdateExistText();
         }
         else
         {
@@ -43,6 +41,9 @@ public partial class InstallerWindow : Window
         }
 
         UpdateResolved();
+        ApplyLanguage();
+        L_ChangedHandler = () => Dispatcher.Invoke(ApplyLanguage);
+        Loc.Changed += L_ChangedHandler;
         Loaded += (_, _) =>
         {
             PlayEntrance();
@@ -50,10 +51,67 @@ public partial class InstallerWindow : Window
         };
     }
 
+    private readonly Action L_ChangedHandler;
+
+    // ---------- 中英双语：语言切换或启动时统一应用文案 ----------
+
+    private void ApplyLanguage()
+    {
+        Title = $"{Loc.T("setup.appName")} {Loc.T("setup.installer")}";
+        LblTitleBar.Text = Loc.T("setup.installer");
+        LblAppName.Text = Loc.T("setup.appName");
+        LblSubtitle.Text = Loc.T("setup.subtitle");
+        LblPathLabel.Text = Loc.T("setup.pathLabel");
+        BrowseButton.Content = Loc.T("setup.browse");
+        AutoStartCheck.Content = Loc.T("setup.autostart");
+        DesktopCheck.Content = Loc.T("setup.desktop");
+        StartMenuCheck.Content = Loc.T("setup.startmenu");
+        UpdateInstallButton();
+        BusyText.Text = Loc.T("setup.busyInstall");
+        LblDoneTitle.Text = Loc.T("setup.doneTitle");
+        DoneSubText.Text = _done ? UpdateDoneText() : Loc.T("setup.doneSubDefault");
+        FinishButton.Content = Loc.T("setup.finish");
+        RunButton.Content = Loc.T("setup.runNow");
+        RetryButton.Content = Loc.T("setup.retry");
+        if (_existingPath is not null) UpdateExistText();
+        UpdateResolved();
+        Loc.SetSegState(LangBtnZh, LangBtnEn);
+    }
+
+    /// <summary>已安装横幅文案（升级 / 重装两种）。</summary>
+    private void UpdateExistText()
+    {
+        if (_existingPath is null) return;
+        var oldVer = SetupLogic.NormalizeVersion(SetupLogic.DetectExistingInstall()?.Version);
+        ExistText.Text = _isUpgrade
+            ? Loc.F("setup.existUpgradeFmt", oldVer, _existingPath, VersionText.Text.TrimStart('v'))
+            : Loc.F("setup.existReinstallFmt", oldVer, _existingPath);
+    }
+
+    /// <summary>主按钮文案：安装 / 升级 / 重新安装（随检测状态与语言）。</summary>
+    private void UpdateInstallButton() =>
+        InstallButton.Content = _existingPath is not null
+            ? (_isUpgrade ? Loc.T("setup.upgrade") : Loc.T("setup.reinstall"))
+            : Loc.T("setup.install");
+
+    /// <summary>完成面板副文案（需要 _doneTarget 已记录）；无记录时返回默认文案。</summary>
+    private string UpdateDoneText()
+    {
+        if (!_done || _doneTarget is null) return Loc.T("setup.doneSubDefault");
+        return _isUpgrade
+            ? Loc.F("setup.doneUpgradedFmt", VersionText.Text.TrimStart('v'), _doneTarget)
+            : Loc.F("setup.doneInstalledFmt", _doneTarget);
+    }
+
+    private void LangButton_Click(object sender, RoutedEventArgs e)
+    {
+        Loc.SetLanguage(((Button)sender).Tag?.ToString() ?? "zh");   // 触发 Changed → ApplyLanguage
+    }
+
     private void UpdateResolved()
     {
-        try { ResolvedText.Text = "实际安装到：" + SetupLogic.ResolveTarget(PathBox.Text.Trim()); }
-        catch { ResolvedText.Text = "安装位置无效"; }
+        try { ResolvedText.Text = Loc.F("setup.resolvedFmt", SetupLogic.ResolveTarget(PathBox.Text.Trim())); }
+        catch { ResolvedText.Text = Loc.T("setup.errInvalidPath"); }
     }
 
     private void SetState(UIElement current)
@@ -85,11 +143,11 @@ public partial class InstallerWindow : Window
 
         string target;
         try { target = SetupLogic.ResolveTarget(PathBox.Text.Trim()); }
-        catch { ShowError("安装位置无效，请重新选择。"); return; }
+        catch { ShowError(Loc.T("setup.errInvalidPathRetry")); return; }
 
         if (target.Length == 0)
         {
-            ShowError("请选择安装位置。");
+            ShowError(Loc.T("setup.errEmptyPath"));
             return;
         }
         if (SetupLogic.ValidateTarget(target) is { } problem)
@@ -100,7 +158,7 @@ public partial class InstallerWindow : Window
 
         _target = target;
         _busy = true;
-        BusyText.Text = "正在安装…";
+        BusyText.Text = Loc.T("setup.busyInstall");
         SetState(BusyPanel);
 
         try
@@ -109,7 +167,6 @@ public partial class InstallerWindow : Window
             var desktop = DesktopCheck.IsChecked == true;
             var startMenu = StartMenuCheck.IsChecked == true;
             var existingPath = _existingPath;
-            var isUpgrade = _isUpgrade;
             await System.Threading.Tasks.Task.Run(() =>
             {
                 // 旧安装清理（杀旧进程/自启/快捷方式/登记；换位置时删旧目录），再全新安装
@@ -119,15 +176,14 @@ public partial class InstallerWindow : Window
             });
 
             _done = true;
-            DoneSubText.Text = isUpgrade
-                ? $"已升级到 v{VersionText.Text.TrimStart('v')}：{_target}"
-                : $"程序已安装到 {_target}";
+            _doneTarget = _target;
+            DoneSubText.Text = UpdateDoneText();
             SetState(DonePanel);
             PlayDoneAnimation();
         }
         catch (Exception ex)
         {
-            ShowError($"安装失败：{ex.Message}");
+            ShowError(Loc.F("setup.errInstallFmt", ex.Message));
         }
         finally
         {
@@ -152,10 +208,8 @@ public partial class InstallerWindow : Window
         if (!SetupLogic.IsDotNetDesktopRuntimeInstalled())
         {
             var r = MessageBox.Show(this,
-                "未检测到 .NET 8 桌面运行时（绒汇耳机助手运行必需）。\n\n" +
-                "点击「是」打开微软官方下载页，安装运行时后即可正常使用；" +
-                "也可以稍后从开始菜单启动本程序。",
-                "需要 .NET 8 桌面运行时", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                Loc.T("setup.netBody"),
+                Loc.T("setup.netTitle"), MessageBoxButton.YesNo, MessageBoxImage.Information);
             if (r == MessageBoxResult.Yes)
             {
                 try

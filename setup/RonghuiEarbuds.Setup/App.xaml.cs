@@ -32,6 +32,8 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        Loc.Initialize();   // 界面语言：默认按系统 UI 文化（zh→中文，否则英文），窗口内可手动切换
+
         Window window = e.Args.Any(a => a.Equals("--uninstall", StringComparison.OrdinalIgnoreCase))
             ? new UninstallWindow()
             : new InstallerWindow();

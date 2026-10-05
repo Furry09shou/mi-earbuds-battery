@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -10,11 +11,15 @@ public partial class UninstallWindow : Window
 {
     private bool _busy;
     private bool _finished;
+    private bool _verifyFailed;     // 校验失败进入异常面板（语言切换时需重建该文案）
+    private bool? _deleteConfigChoice;  // 完成后的勾选状态（语言切换时重建完成文案）
 
     public UninstallWindow()
     {
         InitializeComponent();
         LogoImage.Source = App.LoadLogo();
+        ApplyLanguage();
+        Loc.Changed += () => Dispatcher.Invoke(ApplyLanguage);
         Loaded += (_, _) =>
         {
             PlayEntrance();
@@ -22,11 +27,36 @@ public partial class UninstallWindow : Window
         };
         if (!SetupLogic.VerifyOwnInstall())
         {
-            WarnText.Text =
-                "未找到与卸载程序匹配的安装信息，已取消操作。\n\n" +
-                "（为防止误卸载其他软件，卸载前会校验注册表登记与本程序路径一致）";
+            _verifyFailed = true;
+            WarnText.Text = Loc.T("setup.warnNotOurs");
             SetState(WarnPanel);
         }
+    }
+
+    // ---------- 中英双语：语言切换或启动时统一应用文案 ----------
+
+    private void ApplyLanguage()
+    {
+        Title = $"{Loc.T("setup.appName")} {Loc.T("setup.uninstaller")}";
+        LblTitleBar.Text = Loc.T("setup.uninstaller");
+        LblConfirmTitle.Text = Loc.T("setup.confirmTitle");
+        LblConfirmBody.Text = Loc.T("setup.confirmBody");
+        DeleteConfigCheck.Content = Loc.T("setup.deleteConfig");
+        CancelButton.Content = Loc.T("setup.cancel");
+        UninstallConfirmButton.Content = Loc.T("setup.uninstall");
+        LblBusyText.Text = Loc.T("setup.busyUninstall");
+        LblDoneTitle.Text = Loc.T("setup.doneUninstallTitle");
+        DoneSubText.Text = _finished && _deleteConfigChoice is { } del
+            ? del ? Loc.T("setup.doneConfigRemoved") : Loc.T("setup.doneFilesKept")
+            : Loc.T("setup.doneFilesRemoved");
+        CloseWarnButton.Content = Loc.T("setup.close");
+        if (_verifyFailed) WarnText.Text = Loc.T("setup.warnNotOurs");
+        Loc.SetSegState(LangBtnZh, LangBtnEn);
+    }
+
+    private void LangButton_Click(object sender, RoutedEventArgs e)
+    {
+        Loc.SetLanguage(((Button)sender).Tag?.ToString() ?? "zh");   // 触发 Changed → ApplyLanguage
     }
 
     private void SetState(UIElement current)
@@ -56,7 +86,8 @@ public partial class UninstallWindow : Window
             var deleteConfig = DeleteConfigCheck.IsChecked == true;
             await System.Threading.Tasks.Task.Run(() => SetupLogic.Uninstall(deleteConfig));
             _finished = true;
-            DoneSubText.Text = deleteConfig ? "程序文件与配置已移除" : "程序文件已移除（配置已保留）";
+            _deleteConfigChoice = deleteConfig;
+            DoneSubText.Text = deleteConfig ? Loc.T("setup.doneConfigRemoved") : Loc.T("setup.doneFilesKept");
             SetState(DonePanel);
             PlayDoneAnimation();
 
@@ -71,7 +102,7 @@ public partial class UninstallWindow : Window
         }
         catch (Exception ex)
         {
-            WarnText.Text = $"卸载失败：{ex.Message}";
+            WarnText.Text = Loc.F("setup.errUninstallFmt", ex.Message);
             SetState(WarnPanel);
         }
         finally
