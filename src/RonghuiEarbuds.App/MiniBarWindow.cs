@@ -80,8 +80,9 @@ public sealed class MiniBarWindow : Window
     {
         _config = config;
 
-        Width = 272;   // 窗口=卡片尺寸（无留白），高度随勾选行数在 Render 时调整
-        Height = 48;
+        Width = 272;   // 窗口=卡片尺寸；高度由内容自动决定（SizeToContent），
+                       // 手工公式算不准行堆栈+分隔线的总高，总会差几个像素
+        SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.Manual;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -228,12 +229,7 @@ public sealed class MiniBarWindow : Window
         for (var i = 0; i < list.Count; i++)
             RenderRow(_rows[i], list[i].Mac, list[i].Dev);
 
-        // 行数变化 → 调整窗口高度（宽度固定）。
-        // 窗口=卡片尺寸：内容 = 行堆栈上下 margin 4 + 行数*行高 + 行间分隔 gap
-        //（旧公式开头多算的 48 是已删除的标题区残留，会留下 44px 大下巴）
-        double h = 4 + list.Count * RowHeight + Math.Max(0, list.Count - 1) * RowGap;
-        if (Math.Abs(Height - h) > 0.5)
-            Height = h;
+        // 高度由 SizeToContent 自动贴合内容，无需手工计算
     }
 
     private void RenderRow(BarRow row, string mac, BarDevice dev)
@@ -337,6 +333,8 @@ public sealed class MiniBarWindow : Window
     {
         var row = new BarRow();
         var grid = new Grid { Margin = new Thickness(12, 0, 12, 0), Height = RowHeight };
+        // 中文字形在字体行框里偏上约 1px，整行内容下移补偿，使上下留白视觉相等
+        grid.RenderTransform = new TranslateTransform(0, 1);
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         for (var i = 0; i < 3; i++)
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -591,7 +589,7 @@ public sealed class MiniBarWindow : Window
         else
         {
             Left = wa.Right - Width - 18;
-            Top = wa.Bottom - Height - 62;
+            Top = wa.Bottom - ActualHeight - 62;   // 高度由内容自适应，用实际值
         }
     }
 
