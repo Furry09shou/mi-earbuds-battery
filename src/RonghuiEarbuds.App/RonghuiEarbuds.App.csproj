@@ -11,7 +11,7 @@
     <AssemblyName>RonghuiEarbuds</AssemblyName>
     <RootNamespace>RonghuiEarbuds.App</RootNamespace>
     <ApplicationIcon>..\..\assets\RonghuiEarbuds.ico</ApplicationIcon>
-    <Version>1.5.1</Version>
+    <Version>1.6.0</Version>
     <!-- 用户装了更高版本运行时（9/10）也能直接运行，无需恰好是 8 -->
     <RollForward>LatestMajor</RollForward>
   </PropertyGroup>

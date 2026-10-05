@@ -18,7 +18,9 @@ public partial class MainWindow : Window
     private readonly AppConfig _config;
     private readonly Action<EarbudsUpdate>? _onUpdateApplied;
     private readonly Action<bool>? _onAliveChanged;
+    private readonly Action<bool>? _onMiniBarToggle;
     private readonly DispatcherTimer _aliveTimer;
+    private readonly BatteryHistoryStore _history = new();
     private bool _lastAlive = true;
 
     private bool _initialized;
@@ -45,10 +47,11 @@ public partial class MainWindow : Window
     private const int JumpThreshold = 25;
     private static readonly TimeSpan JumpWindow = TimeSpan.FromSeconds(3);
 
-    private static readonly Color GoodColor = Color.FromRgb(0x6F, 0xBF, 0x73);
-    private static readonly Color MidColor = Color.FromRgb(0xD9, 0xA1, 0x3B);
-    private static readonly Color LowColor = Color.FromRgb(0xD9, 0x6A, 0x5B);
-    private static readonly Color UnknownColor = Color.FromRgb(0x4A, 0x4A, 0x52);
+    // 主题色经 ThemeManager 动态取值（跟随 Windows 深浅模式）
+    private static Color GoodColor => ThemeManager.GetColor("T.Good");
+    private static Color MidColor => ThemeManager.GetColor("T.Mid");
+    private static Color LowColor => ThemeManager.GetColor("T.Low");
+    private static Color UnknownColor => ThemeManager.GetColor("T.Unknown");
 
     /// <summary>单台设备的观测状态。</summary>
     private sealed class DeviceState
@@ -74,19 +77,22 @@ public partial class MainWindow : Window
     }
 
     public MainWindow(EarbudsWatcher watcher, AppConfig config,
-        Action<EarbudsUpdate>? onUpdateApplied = null, Action<bool>? onAliveChanged = null)
+        Action<EarbudsUpdate>? onUpdateApplied = null, Action<bool>? onAliveChanged = null,
+        Action<bool>? onMiniBarToggle = null)
     {
         InitializeComponent();
         _watcher = watcher;
         _config = config;
         _onUpdateApplied = onUpdateApplied;
         _onAliveChanged = onAliveChanged;
+        _onMiniBarToggle = onMiniBarToggle;
 
         RestorePosition(config);
 
         _capture.Ticked += () => Dispatcher.Invoke(RefreshCaptureLive);
 
         AutoStartCheck.IsChecked = AutoStartHelper.IsEnabled();
+        InitSettingsControls();
         _initialized = true;
 
         ApplyPinState();   // 恢复用户的图钉置顶设置
@@ -110,6 +116,8 @@ public partial class MainWindow : Window
             if (++_probeTick % 5 == 0) RefreshConnectedAudio();
             // 每 15 秒读一次系统电量（HFP/AVRCP 上报），作广播暂停时的兜底显示
             if (_probeTick % 15 == 0) ProbeSystemBattery();
+            // 每 30 秒刷新一次用量统计（预计可用时长随时间推进而变化）
+            if (_probeTick % 30 == 0) RefreshStats();
         };
         _aliveTimer.Start();
 
@@ -132,6 +140,8 @@ public partial class MainWindow : Window
         var s = u.Snapshot;
         if (st.Name.Length == 0)
             st.Name = string.IsNullOrWhiteSpace(u.DisplayName) ? u.Mac : u.DisplayName;
+
+        _history.Record(u.Mac, s);   // 电量历史落库（内部自带节流）
 
         // 电量值（带抖动过滤；null 表示本帧无效，维持旧显示）
         var left = Filter(ref st.Left, s.LeftPercent);
@@ -187,6 +197,7 @@ public partial class MainWindow : Window
         ApplyRing(RightRing, right);
         ApplyRing(CaseRing, cse);
 
+        RefreshStats();
         RefreshAliveState();
         _onUpdateApplied?.Invoke(u);
     }
@@ -209,13 +220,14 @@ public partial class MainWindow : Window
         SetRingInstant(RightRing, st.Right);
         SetRingInstant(CaseRing, st.Case);
         RefreshAliveState();
+        RefreshStats();
         ProbeSystemBattery();   // 切换设备立即读一次系统电量，不等 15 秒心跳
     }
 
     private static string InCaseText(bool? inCase) => inCase switch
     {
         null => "--",
-        true => "在仓充电",
+        true => "充电中",
         false => "使用中",
     };
 
@@ -249,12 +261,7 @@ public partial class MainWindow : Window
         ring.AnimateTo(value.Value);
     }
 
-    private static Color ColorFor(int v) => v switch
-    {
-        >= 50 => GoodColor,
-        >= 20 => MidColor,
-        _ => LowColor,
-    };
+    private static Color ColorFor(int v) => ThemeManager.ColorFor(v);
 
     // ---------- 存活状态 ----------
 
@@ -278,7 +285,7 @@ public partial class MainWindow : Window
         StartPulse(alive);
 
         StateText.Text = unadapted
-            ? (alive ? "已连接 · 该耳机暂未适配电量解析" : "未连接")
+            ? (alive ? "已连接 · 该机型不支持分耳电量" : "未连接")
             : !hasData
                 ? "请打开充电仓盖"
                 : alive
@@ -341,6 +348,7 @@ public partial class MainWindow : Window
     {
         if (_active is not { } st) return;
         st.SystemBattery = SystemBatteryProbe.GetLevel(st.Mac);
+        _history.RecordSystem(st.Mac, st.SystemBattery);   // 广播停止期间保持历史连续
         RefreshAliveState();   // 重新渲染（alive 状态可能未变，但电量值更新了）
     }
 
@@ -360,7 +368,7 @@ public partial class MainWindow : Window
         {
             SystemBatteryText.Text = st.IsAdapted
                 ? $"系统电量 {lv}% · 放入充电仓重新开盖可刷新"
-                : $"系统电量 {lv}%（未适配机型，整机电量）";
+                : $"系统电量 {lv}%（该机型仅支持整机电量）";
             SystemBatteryText.Visibility = Visibility.Visible;
         }
         else
@@ -677,8 +685,8 @@ public partial class MainWindow : Window
     {
         if (!d.IsAdapted)
             return (DateTime.Now - d.LastSeen).TotalSeconds <= StaleAfterSeconds
-                ? "已连接 · 未适配"
-                : "未连接 · 未适配";
+                ? "已连接 · 不支持分耳电量"
+                : "未连接 · 不支持分耳电量";
         string part((int Value, DateTime Time, int Suppressed)? s) =>
             IsChannelFresh(s) ? $"{s!.Value.Value}%" : "--";
         return $"左 {part(d.Left)} · 右 {part(d.Right)} · 仓 {part(d.Case)}";
@@ -696,7 +704,7 @@ public partial class MainWindow : Window
 
         public System.Windows.Media.Brush Dot =>
             new SolidColorBrush(Online ? GoodColor : UnknownColor);
-        public string Badge => IsCurrent ? "当前" : !Adapted ? "未适配" : "";
+        public string Badge => IsCurrent ? "当前" : !Adapted ? "不支持" : "";
         public Visibility BadgeVisibility =>
             Badge.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -757,15 +765,162 @@ public partial class MainWindow : Window
 
     private void AdaptButton_Click(object sender, RoutedEventArgs e) => ShowAdapterList(instant: false);
 
+    // ==================== 设置视图（同窗口内跳转） ====================
+
+    // 勿扰时段预设（循环切换）：开始小时 / 结束小时（支持跨零点）
+    private static readonly (int Start, int End)[] QuietPresets =
+    {
+        (22, 8), (23, 7), (0, 6), (21, 9), (13, 14),
+    };
+
+    private void InitSettingsControls()
+    {
+        LowThresholdSlider.Value = Math.Clamp(_config.LowBatteryThreshold, 10, 50);
+        LowThresholdValue.Text = $"{(int)LowThresholdSlider.Value}%";
+        QuietHoursCheck.IsChecked = _config.QuietHoursEnabled;
+        RefreshQuietHoursLabel();
+        DropAlertCheck.IsChecked = _config.SuddenDropAlert;
+        PopupCheck.IsChecked = _config.OpenLidPopup;
+        CooldownSlider.Value = Math.Clamp(_config.PopupCooldownMinutes, 1, 30);
+        CooldownValue.Text = $"{(int)CooldownSlider.Value} 分钟";
+        MiniBarCheck.IsChecked = _config.MiniBarEnabled;
+    }
+
+    private void SettingsButton_Click(object sender, RoutedEventArgs e) => ShowSettingsView();
+
+    private void SettingsBackButton_Click(object sender, RoutedEventArgs e) => ShowMainView();
+
+    /// <summary>托盘「设置」入口：显示主面板后直接跳到设置视图。</summary>
+    public void ShowSettingsView()
+    {
+        _adapterPage = -1;
+        MainView.Visibility = Visibility.Collapsed;
+        AdapterView.Visibility = Visibility.Collapsed;
+        SettingsView.Visibility = Visibility.Visible;
+        SettingsViews.Opacity = 0;
+        SettingsTranslate.Y = 14;
+        SettingsViews.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(240)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        SettingsTranslate.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(14, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        AnimateWindowHeight(SettingsViewHeight, instant: false);
+    }
+
+    private void LowThresholdSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_initialized) return;
+        LowThresholdValue.Text = $"{(int)e.NewValue}%";
+        _config.LowBatteryThreshold = (int)e.NewValue;
+        _config.Save();
+    }
+
+    private void QuietHoursCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _config.QuietHoursEnabled = QuietHoursCheck.IsChecked == true;
+        _config.Save();
+    }
+
+    private void QuietHoursButton_Click(object sender, RoutedEventArgs e)
+    {
+        // 循环切换预设时段；先确保勿扰开启
+        QuietHoursCheck.IsChecked = true;
+        var cur = (_config.QuietStartHour, _config.QuietEndHour);
+        var idx = Array.FindIndex(QuietPresets, p => p.Start == cur.Item1 && p.End == cur.Item2);
+        var next = QuietPresets[(idx + 1) % QuietPresets.Length];
+        _config.QuietStartHour = next.Start;
+        _config.QuietEndHour = next.End;
+        _config.Save();
+        RefreshQuietHoursLabel();
+    }
+
+    private void RefreshQuietHoursLabel()
+    {
+        QuietHoursButton.Content = $"{_config.QuietStartHour:00}:00 – {_config.QuietEndHour:00}:00";
+        QuietHoursButton.Opacity = _config.QuietHoursEnabled ? 1.0 : 0.45;
+    }
+
+    private void DropAlertCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _config.SuddenDropAlert = DropAlertCheck.IsChecked == true;
+        _config.Save();
+    }
+
+    private void PopupCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _config.OpenLidPopup = PopupCheck.IsChecked == true;
+        _config.Save();
+    }
+
+    private void CooldownSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_initialized) return;
+        CooldownValue.Text = $"{(int)e.NewValue} 分钟";
+        _config.PopupCooldownMinutes = (int)e.NewValue;
+        _config.Save();
+    }
+
+    private void MiniBarCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _config.MiniBarEnabled = MiniBarCheck.IsChecked == true;
+        _config.Save();
+        _onMiniBarToggle?.Invoke(_config.MiniBarEnabled);
+    }
+
+    /// <summary>托盘切换悬浮条后同步设置页开关（不触发事件）。</summary>
+    public void SyncMiniBarCheck() => MiniBarCheck.IsChecked = _config.MiniBarEnabled;
+
+    // ==================== 电量统计（今日已用 / 预计可用 / 曲线） ====================
+
+    private void RefreshStats()
+    {
+        if (_active is not { } st || st.Mac.Length == 0) return;
+        BatteryDayStats stats;
+        try { stats = _history.GetTodayStats(st.Mac); }
+        catch { return; }
+
+        StatsUsedText.Text = stats.UsedPercent > 0
+            ? $"{(int)Math.Round(stats.UsedPercent)}%"
+            : "--";
+
+        bool charging = stats.EstimateText == "充电中";
+        StatsEstimateText.Text = charging ? "充电中" : $"预计可用 {stats.EstimateText}";
+        StatsEstimateText.SetResourceReference(TextBlock.ForegroundProperty,
+            charging ? "T.Accent" : "T.TextGreen");
+
+        // 曲线：当日有效电量序列映射到 150×34
+        if (stats.Curve.Count >= 2)
+        {
+            const double w = 150, h = 34;
+            var geo = new StreamGeometry();
+            using (var ctx = geo.Open())
+            {
+                ctx.BeginFigure(new Point(0, h), false, false);
+                foreach (var (x, y) in stats.Curve)
+                    ctx.LineTo(new Point(x / 100.0 * w, h - y / 100.0 * h), true, false);
+            }
+            StatsCurve.Data = geo;
+            StatsCurve.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            StatsCurve.Visibility = Visibility.Collapsed;
+        }
+    }
+
     // ==================== 适配视图：名单 + 分页向导（窗口内跳转） ====================
 
     private const string IssueUrlBase = "https://github.com/Furry09shou/ronghui-earbuds/issues/new";
-    private const double MainViewHeight = 448;
+    private const double MainViewHeight = 508;
+    private const double SettingsViewHeight = 640;
     private const double AdapterListHeight = 480;
     private const double AdapterWizardHeight = 560;
     private const string ModelPlaceholder = "例如：Redmi Buds 5";
-    private static readonly Color PlaceholderColor = Color.FromRgb(0x5C, 0x5C, 0x66);
-    private static readonly Color InputColor = Color.FromRgb(0xED, 0xED, 0xF0);
+    private static Color PlaceholderColor => ThemeManager.GetColor("T.TextDim");
+    private static Color InputColor => ThemeManager.GetColor("T.TextPrimary");
 
     // 耳机形态（写入采集元数据，供分析时区分电量字段数量）
     private const string LayoutDualCase = "dual_case";
@@ -879,6 +1034,7 @@ public partial class MainWindow : Window
     {
         _adapterPage = -1;
         AdapterView.Visibility = Visibility.Collapsed;
+        SettingsView.Visibility = Visibility.Collapsed;
         MainView.Visibility = Visibility.Visible;
         AnimateWindowHeight(MainViewHeight, instant: false);
     }
@@ -903,8 +1059,8 @@ public partial class MainWindow : Window
         for (var i = 0; i < 6; i++)
         {
             _dots[i].Background = new SolidColorBrush(i <= active
-                ? Color.FromRgb(0xE8, 0x7A, 0x3E)
-                : Color.FromRgb(0x3A, 0x3A, 0x42));
+                ? ThemeManager.GetColor("T.Accent")
+                : ThemeManager.GetColor("T.InputBorder"));
         }
     }
 

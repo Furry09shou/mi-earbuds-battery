@@ -20,6 +20,36 @@ public sealed class AppConfig
     // 出现过的设备名单（切换列表用）：不同时段连接的耳机也能切回，跨重启保留
     public List<KnownDeviceEntry>? KnownDevices { get; set; }
 
+    // ================= v1.6.0 设置界面项（不再手改 config.json） =================
+
+    /// <summary>低电量提醒阈值（%）。电量低于该值弹托盘提醒。</summary>
+    public int LowBatteryThreshold { get; set; } = 20;
+
+    /// <summary>耳机开盖（收到广播）时自动弹出主窗口。</summary>
+    public bool OpenLidPopup { get; set; } = true;
+
+    /// <summary>开盖弹窗冷却时间（分钟），避免反复打扰。</summary>
+    public int PopupCooldownMinutes { get; set; } = 5;
+
+    /// <summary>提醒勿扰时段开关（时段内不弹低电量/骤降提醒）。</summary>
+    public bool QuietHoursEnabled { get; set; } = true;
+
+    /// <summary>勿扰开始小时（0-23，默认 22 = 22:00）。</summary>
+    public int QuietStartHour { get; set; } = 22;
+
+    /// <summary>勿扰结束小时（0-23，默认 8 = 08:00）。</summary>
+    public int QuietEndHour { get; set; } = 8;
+
+    /// <summary>电量骤降提醒（短时间下降过快时提醒，可能是耳机异常耗电）。</summary>
+    public bool SuddenDropAlert { get; set; } = true;
+
+    /// <summary>悬浮迷你电量条开关。</summary>
+    public bool MiniBarEnabled { get; set; }
+
+    /// <summary>悬浮条位置（拖动后持久化）。</summary>
+    public double? MiniBarLeft { get; set; }
+    public double? MiniBarTop { get; set; }
+
     private static string Dir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RonghuiEarbuds");
     private static string FilePath => Path.Combine(Dir, "config.json");

@@ -5,23 +5,29 @@ using WinForms = System.Windows.Forms;
 namespace RonghuiEarbuds.App.UI;
 
 /// <summary>
-/// 托盘图标：动态显示最低电量数字 + 气泡通知（绑定成功 / 低电量提醒）。
-/// 左键单击切换主面板，右键菜单。
+/// 托盘图标：动态显示最低电量数字 + 气泡通知（绑定成功 / 更新可用；
+/// 低电量与骤降提醒由 LowBatteryMonitor 经 App 转发到此弹出）。
+/// 左键单击切换主面板，右键菜单（主面板/悬浮条/设置/退出）。
 /// </summary>
 public sealed class TrayController : IDisposable
 {
     private readonly WinForms.NotifyIcon _icon;
+    private readonly AppConfig _config;
     private Bitmap? _currentBitmap;
     private Icon? _currentIcon;
     private int? _shownPercent = int.MinValue;
-    private bool _lowWarned;
 
     public Action? ToggleWindow { get; init; }
     public Action? ShowWindowRequested { get; init; }
+    public Action? ShowSettingsRequested { get; init; }
+    public Action? ToggleMiniBarRequested { get; init; }
     public Action? ExitRequested { get; init; }
 
-    public TrayController(EarbudsWatcher watcher)
+    private readonly WinForms.ToolStripMenuItem _miniBarItem;
+
+    public TrayController(EarbudsWatcher watcher, AppConfig config)
     {
+        _config = config;
         _icon = new WinForms.NotifyIcon
         {
             Visible = true,
@@ -29,8 +35,17 @@ public sealed class TrayController : IDisposable
         };
         SetIcon(null);
 
+        _miniBarItem = new WinForms.ToolStripMenuItem("显示悬浮电量条")
+        {
+            CheckOnClick = true,
+            Checked = _config.MiniBarEnabled,
+        };
+        _miniBarItem.Click += (_, _) => ToggleMiniBarRequested?.Invoke();
+
         var menu = new WinForms.ContextMenuStrip();
         menu.Items.Add("显示主面板", null, (_, _) => ShowWindowRequested?.Invoke());
+        menu.Items.Add("设置", null, (_, _) => ShowSettingsRequested?.Invoke());
+        menu.Items.Add(_miniBarItem);
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => ExitRequested?.Invoke());
         _icon.ContextMenuStrip = menu;
@@ -45,6 +60,9 @@ public sealed class TrayController : IDisposable
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
                 ShowBalloon($"已绑定 {name}", "打开充电仓盖即可查看电量"));
     }
+
+    /// <summary>设置界面开关悬浮条后同步托盘菜单勾选态。</summary>
+    public void SyncMiniBarChecked(bool enabled) => _miniBarItem.Checked = enabled;
 
     private EarbudsUpdate? _last;
     private bool _connected = true;
@@ -83,17 +101,6 @@ public sealed class TrayController : IDisposable
         if (string.IsNullOrWhiteSpace(name)) name = "耳机";
         var tip = $"{name}\n左耳 {fmt(s.LeftPercent)}%   右耳 {fmt(s.RightPercent)}%\n充电仓 {fmt(s.CasePercent)}%";
         _icon.Text = tip.Length <= 63 ? tip : tip[..63];
-
-        int? lowest = MinOrNull(s.LeftPercent, s.RightPercent, s.CasePercent);
-        if (lowest is < 20 && !_lowWarned)
-        {
-            _lowWarned = true;
-            ShowBalloon("耳机电量不足 20%", "建议把耳机放回充电仓");
-        }
-        else if (lowest is > 25)
-        {
-            _lowWarned = false;
-        }
     }
 
     private static int? MinOrNull(params int?[] values) =>

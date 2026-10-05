@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using RonghuiEarbuds.App.Core;
 
 namespace RonghuiEarbuds.App.UI;
 
@@ -10,9 +11,16 @@ namespace RonghuiEarbuds.App.UI;
 /// </summary>
 public sealed class BatteryRing : FrameworkElement
 {
-    private static readonly Brush TrackBrush = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x31));
-    private static readonly Brush TextBrush = new SolidColorBrush(Color.FromRgb(0xED, 0xED, 0xF0));
-    private static readonly Brush DimBrush = new SolidColorBrush(Color.FromRgb(0x8F, 0x8F, 0x98));
+    // 主题画刷每次渲染时动态取（跟随深浅模式）
+    private static Brush TrackBrush =>
+    System.Windows.Application.Current.TryFindResource("T.RingTrack") as Brush
+        ?? new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x31));
+    private static Brush TextBrush =>
+        System.Windows.Application.Current.TryFindResource("T.TextPrimary") as Brush
+        ?? new SolidColorBrush(Color.FromRgb(0xED, 0xED, 0xF0));
+    private static Brush DimBrush =>
+        System.Windows.Application.Current.TryFindResource("T.TextSecondary") as Brush
+        ?? new SolidColorBrush(Color.FromRgb(0x8F, 0x8F, 0x98));
 
     public static readonly DependencyProperty LevelProperty = DependencyProperty.Register(
         nameof(Level), typeof(double), typeof(BatteryRing),
@@ -22,6 +30,12 @@ public sealed class BatteryRing : FrameworkElement
         nameof(RingColor), typeof(Color), typeof(BatteryRing),
         new FrameworkPropertyMetadata(Color.FromRgb(0x6F, 0xBF, 0x73),
             FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public BatteryRing()
+    {
+        // 主题切换时重绘（画刷是渲染时动态取的）
+        ThemeManager.ThemeChanged += () => Dispatcher.Invoke(InvalidateVisual);
+    }
 
     public double Level
     {
