@@ -80,8 +80,8 @@ public sealed class MiniBarWindow : Window
     {
         _config = config;
 
-        Width = 324;   // 视觉条 272 宽 + 四周留白给阴影呼吸空间（否则阴影被窗口边界硬裁
-        Height = 92;   // 成直角边像贴图）；高度随勾选行数在 Render 时调整
+        Width = 272;   // 窗口=卡片尺寸（无留白），高度随勾选行数在 Render 时调整
+        Height = 92;
         WindowStartupLocation = WindowStartupLocation.Manual;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -96,23 +96,19 @@ public sealed class MiniBarWindow : Window
 
         var root = new Border
         {
-            CornerRadius = new CornerRadius(22),
+            CornerRadius = new CornerRadius(16),
             BorderThickness = new Thickness(1),
             Cursor = Cursors.SizeAll,
             Child = _rowsHost,
         };
         root.SetResourceReference(Border.BackgroundProperty, "T.WindowBg");
         root.SetResourceReference(Border.BorderBrushProperty, "T.CardBorder");
-        root.Effect = new System.Windows.Media.Effects.DropShadowEffect
-        {
-            BlurRadius = 16, ShadowDepth = 2, Opacity = 0.4, Direction = 270,
-        };
         _rowsHost.Margin = new Thickness(0, 2, 0, 2);
 
-        // 外层透明容器：定位阴影留白 + 透明区域也可拖动
-        var outer = new Grid { Background = Brushes.Transparent, Margin = new Thickness(26, 20, 26, 28) };
-        outer.Children.Add(root);
-        Content = outer;
+        // 窗口=卡片尺寸，无呼吸边距。曾用"窗口放大留白画投影"的方案，但 AllowsTransparency
+        // 窗口的 alpha=0 区域会被分层窗口按像素穿透，点击/拖动随机失灵（连 alpha=1 都救不了
+        // 边缘带），只能放弃 DropShadowEffect——圆角+1px 边框同样干净，且全窗口可靠命中。
+        Content = root;
 
         // 左键：单击（未拖动）弹设备选择菜单；拖动换位置；双击开主面板
         Point? pressPos = null;
@@ -460,17 +456,39 @@ public sealed class MiniBarWindow : Window
         var stack = new StackPanel();
         foreach (var (name, mac) in devices)
         {
-            var item = new MenuItem
+            // 自绘按钮行：整行可点（MenuItem 的点击只认 Header 文本区），橙色勾标示当前显示
+            var check = new TextBlock
             {
-                Header = name,
-                IsCheckable = true,
-                IsChecked = pinned.Contains(mac),
-                StaysOpenOnClick = true,
-                Template = MenuItemTemplate(),
+                Text = "\uE73E",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0x7A, 0x3E)),
+                VerticalAlignment = VerticalAlignment.Center,
+                Visibility = pinned.Contains(mac) ? Visibility.Visible : Visibility.Collapsed,
+            };
+            var label = new TextBlock
+            {
+                Text = name,
+                FontSize = 12.5,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(8, 0, 0, 0),
+            };
+            label.SetResourceReference(TextBlock.ForegroundProperty, "T.TextPrimary");
+            var rowContent = new StackPanel { Orientation = Orientation.Horizontal };
+            rowContent.Children.Add(check);
+            rowContent.Children.Add(label);
+
+            var item = new Button
+            {
+                Content = rowContent,
+                Cursor = Cursors.Hand,
+                Template = RowButtonTemplate(),
             };
             item.Click += (_, _) =>
             {
-                if (item.IsChecked) pinned.Add(mac);
+                bool nowPinned = check.Visibility == Visibility.Collapsed;
+                check.Visibility = nowPinned ? Visibility.Visible : Visibility.Collapsed;
+                if (nowPinned) pinned.Add(mac);
                 else pinned.Remove(mac);
                 _config.MiniBarPinned = pinned.ToList();
                 _config.Save();
@@ -484,6 +502,8 @@ public sealed class MiniBarWindow : Window
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(6),
             Child = stack,
+            // 阴影呼吸空间：没有它阴影会被 Popup 矩形边界硬裁，看起来像不透明的系统矩形
+            Margin = new Thickness(14, 10, 14, 16),
         };
         card.SetResourceReference(Border.BackgroundProperty, "T.WindowBg");
         card.SetResourceReference(Border.BorderBrushProperty, "T.CardBorder");
@@ -493,10 +513,16 @@ public sealed class MiniBarWindow : Window
             BlurRadius = 14, ShadowDepth = 2, Opacity = 0.35, Direction = 270,
         };
 
+        // Placement 用 AbsolutePoint+物理坐标：MousePoint 在高 DPI 下有偏移 bug
+        //（150% 缩放实测弹出点左偏一个 popup 宽度）。AbsolutePoint 的偏移按逻辑 DIP
+        // 计算，物理光标坐标需除以 DPI 缩放
+        var mouse = System.Windows.Forms.Cursor.Position;
+        var dpi = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
         _devicePopup = new Popup
         {
-            PlacementTarget = this,
-            Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.AbsolutePoint,
+            HorizontalOffset = mouse.X / dpi,
+            VerticalOffset = mouse.Y / dpi,
             StaysOpen = false,             // 点外部自动关闭
             AllowsTransparency = true,     // 分层窗口：圆角外透明、阴影完整渲染
             PopupAnimation = PopupAnimation.Fade,
@@ -505,30 +531,20 @@ public sealed class MiniBarWindow : Window
         _devicePopup.IsOpen = true;
     }
 
-    // 行条目模板：与应用弹层同风格（圆角+悬停高亮+橙色勾选）。
+    // 行按钮模板：整行命中+悬停高亮，与应用弹层同风格。
     // 纯代码构建窗口拿不到隐式样式，用 XamlReader 加载模板并缓存。
-    private static ControlTemplate? _menuItemTpl;
+    private static ControlTemplate? _rowBtnTpl;
 
-    private static ControlTemplate MenuItemTemplate() => _menuItemTpl ??= (ControlTemplate)
+    private static ControlTemplate RowButtonTemplate() => _rowBtnTpl ??= (ControlTemplate)
         System.Windows.Markup.XamlReader.Parse("""
             <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                             TargetType="{x:Type MenuItem}">
+                             TargetType="{x:Type Button}">
               <Border x:Name="Row" CornerRadius="7" Padding="10,7" Background="Transparent">
-                <StackPanel Orientation="Horizontal">
-                  <TextBlock x:Name="Check" Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
-                             FontSize="11" Foreground="#E87A3E" VerticalAlignment="Center"
-                             Visibility="Collapsed"/>
-                  <ContentPresenter ContentSource="Header" Margin="8,0,0,0"
-                                    VerticalAlignment="Center"
-                                    TextBlock.Foreground="{DynamicResource T.TextPrimary}"/>
-                </StackPanel>
+                <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Stretch"/>
               </Border>
               <ControlTemplate.Triggers>
-                <Trigger Property="IsChecked" Value="True">
-                  <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
-                </Trigger>
-                <Trigger Property="IsHighlighted" Value="True">
+                <Trigger Property="IsMouseOver" Value="True">
                   <Setter TargetName="Row" Property="Background" Value="#1426262D"/>
                 </Trigger>
               </ControlTemplate.Triggers>
