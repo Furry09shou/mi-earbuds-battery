@@ -245,7 +245,7 @@ public sealed class MiniBarWindow : Window
         {
             row.LastName = name;
             row.NameText.Text = name;
-            Dispatcher.BeginInvoke(() => UpdateMarquee(row), DispatcherPriority.Loaded);
+            Dispatcher.BeginInvoke(() => UpdateMarquee(row), DispatcherPriority.Render);
         }
 
         // 行级存活：连接心跳信号（AliveProvider），而非广播——广播不可靠
@@ -422,7 +422,7 @@ public sealed class MiniBarWindow : Window
     {
         row.NameShift.X = 0;
         double viewW = row.NameHost.ActualWidth;
-        double textW = row.NameCanvas.DesiredSize.Width;
+        double textW = row.NameText.DesiredSize.Width;   // 文字宽度读 TextBlock（Canvas 自身 DesiredSize 恒 0）
         if (viewW <= 0 || textW <= 0) return;
 
         row.NameCanvas.BeginAnimation(Canvas.LeftProperty, null);
@@ -454,6 +454,9 @@ public sealed class MiniBarWindow : Window
     private Border? _mediaBar;
     private TextBlock? _playGlyph;
     private TextBlock? _mediaTitle;
+    private Grid? _mediaHost;
+    private Canvas? _mediaCanvas;
+    private TranslateTransform? _mediaShift;
     private bool _playing;
     private Slider? _volumeSlider;
     private TextBlock? _muteGlyph;
@@ -475,15 +478,62 @@ public sealed class MiniBarWindow : Window
         {
             var text = string.IsNullOrWhiteSpace(artist) ? title : $"{artist} — {title}";
             if (string.IsNullOrWhiteSpace(text))
+            {
+                t.Text = "";
                 t.Visibility = Visibility.Collapsed;
+            }
             else
             {
                 t.Text = text;
                 t.Visibility = Visibility.Visible;
             }
+            // 布局完成后按实际宽度决定是否滚动（短标题原地显示）
+            Dispatcher.BeginInvoke(UpdateMediaMarquee, DispatcherPriority.Render);
         }
         _playing = playing;
         if (_playGlyph is { } g) g.Text = playing ? "\uE769" : "\uE768";
+    }
+
+    /// <summary>媒体标题跑马灯：Canvas 提供无限约束测量（Grid 测宽会被列宽截断），
+    /// 文字宽度读 TextBlock.DesiredSize（Canvas 自身 DesiredSize 恒 0）。</summary>
+    private void UpdateMediaMarquee()
+    {
+        if (_mediaShift is null || _mediaHost is null || _mediaTitle is null) return;
+        _mediaShift.X = 0;
+        double viewW = _mediaHost.ActualWidth;
+        double textW = _mediaTitle.DesiredSize.Width;
+        _mediaCanvas?.BeginAnimation(Canvas.LeftProperty, null);
+        _mediaShift.BeginAnimation(TranslateTransform.XProperty, null);
+
+        if (_mediaTitle.Text.Length == 0) return;          // 未显示：原地
+        if (viewW <= 0 || textW <= 0)
+        {
+            // 文本刚设置、尚未完成布局测量：挂一次性重试
+            _mediaTitle.LayoutUpdated -= RetryMediaMarquee;
+            _mediaTitle.LayoutUpdated += RetryMediaMarquee;
+            return;
+        }
+        if (textW <= viewW + 0.5) return;                  // 放得下：左对齐不动
+
+        double overflow = textW - viewW + 12;              // 缓冲，让尾部完整滑入视野
+        double speed = 28;                                 // px/s 基速（标题可稍快）
+        double dur = Math.Min(8, Math.Max(2.5, overflow / speed));
+        var anim = new DoubleAnimation
+        {
+            From = 0,
+            To = -overflow,
+            Duration = TimeSpan.FromSeconds(dur),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut },
+        };
+        _mediaShift.BeginAnimation(TranslateTransform.XProperty, anim);
+    }
+
+    private void RetryMediaMarquee(object? sender, EventArgs e)
+    {
+        _mediaTitle!.LayoutUpdated -= RetryMediaMarquee;
+        Dispatcher.BeginInvoke(UpdateMediaMarquee, DispatcherPriority.Render);
     }
 
     /// <summary>底部控制栏：上一曲 / 播放暂停 / 下一曲 / 语音播报电量，标题列同步系统媒体会话。
@@ -495,19 +545,32 @@ public sealed class MiniBarWindow : Window
         for (var i = 0; i < 4; i++)
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+        // 标题：超宽时跑马灯循环滚动（Canvas 无限约束测宽，宿主裁切）
         var title = new TextBlock
         {
             FontSize = 10.5,
             VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Margin = new Thickness(6, 0, 14, 0),
-            TextTrimming = TextTrimming.CharacterEllipsis,
             Visibility = Visibility.Collapsed,
         };
         title.SetResourceReference(TextBlock.ForegroundProperty, "T.TextDim");
+        var mediaShift = new TranslateTransform();
+        title.RenderTransform = mediaShift;
+        var titleCanvas = new Canvas { Height = 14, Margin = new Thickness(6, 0, 14, 0) };
+        titleCanvas.Children.Add(title);
+        var titleHost = new Grid
+        {
+            ClipToBounds = true,
+            MinHeight = 14,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        titleHost.Children.Add(titleCanvas);
+        titleHost.SizeChanged += (_, _) => UpdateMediaMarquee();
         _mediaTitle = title;
-        Grid.SetColumn(title, 0);
-        row.Children.Add(title);
+        _mediaCanvas = titleCanvas;
+        _mediaShift = mediaShift;
+        _mediaHost = titleHost;
+        Grid.SetColumn(titleHost, 0);
+        row.Children.Add(titleHost);
 
         var prev = MakeCtrlButton("\uE892", L.T("mini.prevTip"), MediaKeys.Prev);
         var play = MakeCtrlButton("\uE768", L.T("mini.playTip"), () =>
