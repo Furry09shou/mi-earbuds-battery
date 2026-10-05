@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using RonghuiEarbuds.App.Core;
@@ -19,6 +20,9 @@ public sealed class MiniBarWindow : Window
 
     private readonly AppConfig _config;
     private readonly TextBlock _nameText = new() { FontSize = 10.5, FontWeight = FontWeights.SemiBold };
+    private readonly Grid _nameHost = new() { ClipToBounds = true };
+    private readonly TranslateTransform _nameShift = new();
+    private string _lastName = "";
     private readonly (TextBlock Value, Ellipse Dot, Path Bolt)[] _cells = new (TextBlock, Ellipse, Path)[3];
     private readonly DispatcherTimer _freshTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
@@ -87,9 +91,13 @@ public sealed class MiniBarWindow : Window
 
         _nameText.SetResourceReference(TextBlock.ForegroundProperty, "T.TextSecondary");
         _nameText.VerticalAlignment = VerticalAlignment.Center;
-        _nameText.TextTrimming = TextTrimming.CharacterEllipsis;
-        Grid.SetColumn(_nameText, 0);
-        grid.Children.Add(_nameText);
+        _nameText.HorizontalAlignment = HorizontalAlignment.Left;
+        _nameText.RenderTransform = _nameShift;
+        _nameHost.Children.Add(_nameText);
+        _nameHost.VerticalAlignment = VerticalAlignment.Center;
+        _nameHost.SizeChanged += (_, _) => UpdateMarquee();
+        Grid.SetColumn(_nameHost, 0);
+        grid.Children.Add(_nameHost);
 
         for (var i = 0; i < 3; i++)
         {
@@ -141,7 +149,14 @@ public sealed class MiniBarWindow : Window
     /// <summary>接收关注设备的广播数据。</summary>
     public void Push(EarbudsUpdate u)
     {
-        _nameText.Text = string.IsNullOrWhiteSpace(u.DisplayName) ? "耳机" : u.DisplayName!;
+        var name = string.IsNullOrWhiteSpace(u.DisplayName) ? "耳机" : u.DisplayName!;
+        if (name != _lastName)
+        {
+            _lastName = name;
+            _nameText.Text = name;
+            // 等布局完成后再判断是否需要跑马灯
+            Dispatcher.BeginInvoke(UpdateMarquee, DispatcherPriority.Loaded);
+        }
         _broadcastSeen = u.Timestamp;
         var s = u.Snapshot;
         _lastValues[0] = s.LeftPercent;
@@ -152,6 +167,31 @@ public sealed class MiniBarWindow : Window
         _inCase[2] = false;
         _lastTimes[0] = _lastTimes[1] = _lastTimes[2] = u.Timestamp;
         Render();
+    }
+
+    /// <summary>
+    /// 名字放不下时左右来回滑动（跑马灯）；放得下则复位静止。
+    /// </summary>
+    private void UpdateMarquee()
+    {
+        _nameShift.BeginAnimation(TranslateTransform.XProperty, null);
+        _nameText.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double textW = _nameText.DesiredSize.Width;
+        double viewW = _nameHost.ActualWidth;
+        if (viewW <= 0 || textW <= viewW + 0.5)
+        {
+            _nameShift.X = 0;
+            return;
+        }
+        double overflow = textW - viewW + 10;   // 末尾留一点缓冲
+        _nameShift.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation
+        {
+            From = 0,
+            To = -overflow,
+            Duration = TimeSpan.FromSeconds(Math.Clamp(overflow / 22, 2.5, 8)),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+        });
     }
 
     private void Render()
