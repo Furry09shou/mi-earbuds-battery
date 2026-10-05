@@ -101,14 +101,12 @@ public sealed class MiniBarWindow : Window
 
         _nameText.SetResourceReference(TextBlock.ForegroundProperty, "T.TextSecondary");
         _nameText.RenderTransform = _nameShift;
+        _nameCanvas.Height = 17;                       // 固定行高：desired 链不可靠，文字曾因此被裁成 0 高
         _nameCanvas.Children.Add(_nameText);
         _nameHost.Children.Add(_nameCanvas);
+        _nameHost.MinHeight = 17;
         _nameHost.VerticalAlignment = VerticalAlignment.Center;
-        _nameHost.SizeChanged += (_, _) =>
-        {
-            CenterName();
-            UpdateMarquee();
-        };
+        _nameHost.SizeChanged += (_, _) => UpdateMarquee();
         Grid.SetColumn(_nameHost, 0);
         grid.Children.Add(_nameHost);
 
@@ -160,6 +158,15 @@ public sealed class MiniBarWindow : Window
         return grid;
     }
 
+    /// <summary>跟随关注设备更新型号名（连接枚举即可得，不必等广播）；null=保持现名。</summary>
+    public void SetDeviceName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name == _lastName) return;
+        _lastName = name;
+        _nameText.Text = name;
+        Dispatcher.BeginInvoke(UpdateMarquee, DispatcherPriority.Loaded);
+    }
+
     /// <summary>接收关注设备的广播数据。</summary>
     public void Push(EarbudsUpdate u)
     {
@@ -168,12 +175,8 @@ public sealed class MiniBarWindow : Window
         {
             _lastName = name;
             _nameText.Text = name;
-            // 等布局完成后再垂直居中并判断是否需要跑马灯
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                CenterName();
-                UpdateMarquee();
-            }), DispatcherPriority.Loaded);
+            // 等布局完成后再判断是否需要跑马灯
+            Dispatcher.BeginInvoke(UpdateMarquee, DispatcherPriority.Loaded);
         }
         _broadcastSeen = u.Timestamp;
         var s = u.Snapshot;
@@ -187,13 +190,10 @@ public sealed class MiniBarWindow : Window
         Render();
     }
 
-    /// <summary>Canvas 不做拉伸布局，手动把名字垂直居中。</summary>
-    private void CenterName() =>
-        Canvas.SetTop(_nameText, Math.Max(0, (_nameHost.ActualHeight - _nameText.ActualHeight) / 2));
-
     /// <summary>
     /// 名字放不下时左右来回滑动（跑马灯）；放得下则复位静止。
-    /// Canvas 测量不受列宽约束，ActualWidth 即完整文字宽度。
+    /// Canvas 测量不受列宽约束，ActualWidth 即完整文字宽度；
+    /// Canvas 高度=文字高度且宿主垂直居中，无需手动定位。
     /// </summary>
     private void UpdateMarquee()
     {

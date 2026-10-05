@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly Action<EarbudsUpdate>? _onUpdateApplied;
     private readonly Action<bool>? _onAliveChanged;
     private readonly Action<bool>? _onMiniBarToggle;
+    private readonly Action<string>? _onActiveDeviceName;
     private readonly DispatcherTimer _aliveTimer;
     private readonly BatteryHistoryStore _history;
     private bool _lastAlive = true;
@@ -36,6 +37,10 @@ public partial class MainWindow : Window
 
     /// <summary>当前面板正在显示的设备 MAC（托盘提示只对该设备弹出）。</summary>
     public string? ActiveMac => _active?.Mac;
+
+    /// <summary>当前关注设备的型号名（无名字时 null）。</summary>
+    public string? ActiveDeviceName =>
+        _active is { Name.Length: > 0 } st ? st.Name : null;
 
     // 检查到的新版本（再点一次按钮打开下载页）
     private UpdateInfo? _updateInfo;
@@ -80,7 +85,7 @@ public partial class MainWindow : Window
 
     public MainWindow(EarbudsWatcher watcher, AppConfig config,
         Action<EarbudsUpdate>? onUpdateApplied = null, Action<bool>? onAliveChanged = null,
-        Action<bool>? onMiniBarToggle = null)
+        Action<bool>? onMiniBarToggle = null, Action<string>? onActiveDeviceName = null)
     {
         InitializeComponent();
         _watcher = watcher;
@@ -89,6 +94,7 @@ public partial class MainWindow : Window
         _onUpdateApplied = onUpdateApplied;
         _onAliveChanged = onAliveChanged;
         _onMiniBarToggle = onMiniBarToggle;
+        _onActiveDeviceName = onActiveDeviceName;
 
         RestorePosition(config);
 
@@ -146,7 +152,11 @@ public partial class MainWindow : Window
         st.Rssi = u.Rssi;
         var s = u.Snapshot;
         if (st.Name.Length == 0)
+        {
             st.Name = string.IsNullOrWhiteSpace(u.DisplayName) ? u.Mac : u.DisplayName;
+            if (ReferenceEquals(st, _active))
+                _onActiveDeviceName?.Invoke(st.Name);
+        }
 
         _history.Record(u.Mac, s);   // 电量历史落库（内部自带节流）
 
@@ -221,6 +231,7 @@ public partial class MainWindow : Window
     {
         _active = st;
         DeviceNameText.Text = st.Name.Length > 0 ? st.Name : L.T("main.identifying");
+        _onActiveDeviceName?.Invoke(st.Name.Length > 0 ? st.Name : "");
         MacText.Text = st.Mac;
         UnadaptedHint.Visibility = st.IsAdapted ? Visibility.Collapsed : Visibility.Visible;
         SetRingInstant(LeftRing, st.Left);

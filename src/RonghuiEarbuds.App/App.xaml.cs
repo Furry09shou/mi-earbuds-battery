@@ -50,7 +50,8 @@ public partial class App : Application
             {
                 _miniBar?.ApplyEnabled();
                 _tray?.SyncMiniBarChecked(enabled);
-            }));
+            }),
+            name => Dispatcher.Invoke(() => _miniBar?.SetDeviceName(name)));
 
         _miniBar = new MiniBarWindow(_config)
         {
@@ -126,6 +127,7 @@ public partial class App : Application
         }
 
         _miniBar.ApplyEnabled();   // 恢复悬浮条开关状态
+        _miniBar.SetDeviceName(_window.ActiveDeviceName);   // 补投启动时已知的设备名
         _ = CheckUpdateDailyAsync();
     }
 
