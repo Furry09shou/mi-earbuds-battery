@@ -234,16 +234,22 @@ internal static class SetupLogic
             }
         }
 
-        // 卸载程序本体也放进安装目录（单文件发布时只有 exe 一个文件）
+        // 卸载程序本体也放进安装目录：固定文件名覆盖。
+        // 曾按"运行时文件名"复制——浏览器下载重名会给安装包加 (1)(2)(3) 编号，
+        // 多次安装会把多份不同名字的安装器堆进安装目录。
         if (Environment.ProcessPath is { } self)
         {
-            var selfDir = Path.GetDirectoryName(self)!;
-            var selfName = Path.GetFileNameWithoutExtension(self);
-            foreach (var src in Directory.EnumerateFiles(selfDir, $"{selfName}.*"))
-            {
-                if (src.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)) continue;
-                File.Copy(src, Path.Combine(target, Path.GetFileName(src)), true);
-            }
+            var dst = Path.Combine(target, "RonghuiEarbuds.Setup.exe");
+            if (!string.Equals(self, dst, StringComparison.OrdinalIgnoreCase))
+                File.Copy(self, dst, true);
+        }
+
+        // 清理历史残留的 Setup (n).exe 副本（保留标准名那份）
+        foreach (var stale in Directory.EnumerateFiles(target, "RonghuiEarbuds.Setup*.exe"))
+        {
+            if (Path.GetFileName(stale).Equals("RonghuiEarbuds.Setup.exe",
+                    StringComparison.OrdinalIgnoreCase)) continue;
+            try { File.Delete(stale); } catch { /* 被占用等：保留，不影响运行 */ }
         }
     }
 
