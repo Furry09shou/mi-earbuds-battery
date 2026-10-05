@@ -42,6 +42,25 @@ public partial class MainWindow : Window
     public string? ActiveDeviceName =>
         _active is { Name.Length: > 0 } st ? st.Name : null;
 
+    /// <summary>当前关注设备的系统整机电量（悬浮条兜底显示用）。</summary>
+    public int? ActiveSystemBattery => _active?.SystemBattery;
+
+    /// <summary>悬浮条右键菜单用：值得列出的设备（已持久化名单 + 近期见过的设备）。</summary>
+    public IReadOnlyList<(string Name, string Mac)> KnownDeviceList() =>
+        _devices.Values
+            .Where(d => d.Name.Length > 0 &&
+                        (_knownMacs.Contains(d.Mac) ||
+                         (DateTime.Now - d.LastSeen).TotalMinutes <= 10))
+            .Select(d => (d.Name, d.Mac))
+            .ToList();
+
+    /// <summary>悬浮条菜单切换关注设备。</summary>
+    public void SelectDeviceByMac(string mac)
+    {
+        if (_devices.TryGetValue(mac, out var st) && !ReferenceEquals(st, _active))
+            SetActive(st);
+    }
+
     // 检查到的新版本（再点一次按钮打开下载页）
     private UpdateInfo? _updateInfo;
 

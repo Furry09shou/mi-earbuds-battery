@@ -25,6 +25,7 @@ public sealed class MiniBarWindow : Window
     private readonly TranslateTransform _nameShift = new();
     private string _lastName = "";
     private readonly (TextBlock Value, Ellipse Dot, Path Bolt)[] _cells = new (TextBlock, Ellipse, Path)[3];
+    private readonly StackPanel?[] _panels = new StackPanel[3];   // 值格容器（系统电量单格模式时隐藏其余）
     private readonly DispatcherTimer _freshTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
     private int?[] _lastValues = new int?[3];
@@ -44,6 +45,14 @@ public sealed class MiniBarWindow : Window
 
     /// <summary>App 注入：双击迷你条时显示主窗口。</summary>
     public Action? OpenMainRequested { get; set; }
+
+    /// <summary>App 注入：当前关注设备的系统整机电量（广播停发/未适配时的兜底显示）。</summary>
+    public Func<int?>? SystemBatteryProvider { get; set; }
+
+    /// <summary>App 注入：右键菜单设备名单（名字, MAC）与当前关注 MAC，点击切换关注设备。</summary>
+    public Func<IReadOnlyList<(string Name, string Mac)>>? DeviceListProvider { get; set; }
+    public Func<string?>? ActiveMacProvider { get; set; }
+    public Action<string>? DeviceSwitchRequested { get; set; }
 
     public MiniBarWindow(AppConfig config)
     {
@@ -91,6 +100,7 @@ public sealed class MiniBarWindow : Window
             try { DragMove(); } catch { /* 快速点击可能抛异常 */ }
             PersistPosition();
         };
+        MouseRightButtonUp += (_, _) => OpenDeviceMenu();   // 右键：切换显示的设备
 
         _freshTimer.Tick += (_, _) => Render();
     }
@@ -157,6 +167,7 @@ public sealed class MiniBarWindow : Window
             grid.Children.Add(panel);
 
             _cells[i] = (value, dot, bolt);
+            _panels[i] = panel;
         }
         return grid;
     }
@@ -232,28 +243,133 @@ public sealed class MiniBarWindow : Window
                        (DateTime.Now - _broadcastSeen).TotalSeconds > StaleSeconds;
         Opacity = offline ? 0.55 : 1.0;
 
+        // 三格是否有新鲜分耳数据；没有时若系统整机电量可得 → 单格兜底模式
+        // （未适配机型广播无电量、或连接播放广播停发时，悬浮条不至于全是 --）
+        bool anyFresh = false;
+        for (var i = 0; i < 3; i++)
+        {
+            if (_lastValues[i] is not null &&
+                (DateTime.Now - _lastTimes[i]).TotalSeconds <= FreshSeconds)
+                anyFresh = true;
+        }
+        int? sys = anyFresh ? null : SystemBatteryProvider?.Invoke();
+
         for (var i = 0; i < 3; i++)
         {
             var (value, dot, bolt) = _cells[i];
-            bool fresh = _lastValues[i] is not null &&
+            var panel = _panels[i];
+            bool fresh = anyFresh && _lastValues[i] is not null &&
                          (DateTime.Now - _lastTimes[i]).TotalSeconds <= FreshSeconds;
-            if (fresh)
+
+            if (sys is { } sv && i == 0)
+            {
+                // 系统整机电量单格：标签切「整机」，隐藏闪电（系统值无在仓概念）
+                panel!.Visibility = Visibility.Visible;
+                value.Text = $"{sv}%";
+                value.SetResourceReference(TextBlock.ForegroundProperty, "T.TextPrimary");
+                dot.Fill = new SolidColorBrush(ThemeManager.ColorFor(sv));
+                bolt.Visibility = Visibility.Collapsed;
+                _labels[0].Text = L.T("mini.all");
+            }
+            else if (sys is { })
+            {
+                panel!.Visibility = Visibility.Collapsed;   // 单格模式隐藏其余两格
+            }
+            else if (fresh)
             {
                 int v = _lastValues[i]!.Value;
+                panel!.Visibility = Visibility.Visible;
                 value.Text = $"{v}%";
                 value.SetResourceReference(TextBlock.ForegroundProperty, "T.TextPrimary");
                 dot.Fill = new SolidColorBrush(ThemeManager.ColorFor(v));
                 bolt.Visibility = _inCase[i] ? Visibility.Visible : Visibility.Collapsed;
+                _labels[i].Text = MiniLabel(i);
             }
             else
             {
+                panel!.Visibility = Visibility.Visible;
                 value.Text = "--";
                 value.SetResourceReference(TextBlock.ForegroundProperty, "T.TextDim");
                 dot.Fill = new SolidColorBrush(ThemeManager.GetColor("T.Unknown"));
                 bolt.Visibility = Visibility.Collapsed;
+                _labels[i].Text = MiniLabel(i);
             }
         }
     }
+
+    /// <summary>右键弹出设备切换菜单（列出已登记设备，勾选当前关注设备）。</summary>
+    private void OpenDeviceMenu()
+    {
+        if (DeviceListProvider?.Invoke() is not { Count: > 0 } devices)
+            return;
+        var active = ActiveMacProvider?.Invoke();
+        var menu = new ContextMenu
+        {
+            PlacementTarget = this,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint,
+            Template = MenuTemplate(),
+        };
+        foreach (var (name, mac) in devices)
+        {
+            var item = new MenuItem
+            {
+                Header = name,
+                IsCheckable = true,
+                IsChecked = string.Equals(mac, active, StringComparison.OrdinalIgnoreCase),
+                StaysOpenOnClick = true,
+                Template = MenuItemTemplate(),
+            };
+            item.Click += (_, _) => DeviceSwitchRequested?.Invoke(mac);
+            menu.Items.Add(item);
+        }
+        menu.IsOpen = true;
+    }
+
+    // 菜单模板：与应用弹层同风格（圆角卡片+阴影+悬停高亮+橙色勾选）。
+    // 纯代码构建窗口拿不到隐式样式，用 XamlReader 加载模板并缓存。
+    private static ControlTemplate? _menuTpl, _menuItemTpl;
+
+    private static ControlTemplate MenuTemplate() => _menuTpl ??= (ControlTemplate)
+        System.Windows.Markup.XamlReader.Parse("""
+            <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                             TargetType="{x:Type ContextMenu}">
+              <Border CornerRadius="10" Padding="6"
+                      Background="{DynamicResource T.WindowBg}"
+                      BorderBrush="{DynamicResource T.CardBorder}" BorderThickness="1">
+                <Border.Effect>
+                  <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.35" Direction="270"/>
+                </Border.Effect>
+                <StackPanel IsItemsHost="True"/>
+              </Border>
+            </ControlTemplate>
+            """);
+
+    private static ControlTemplate MenuItemTemplate() => _menuItemTpl ??= (ControlTemplate)
+        System.Windows.Markup.XamlReader.Parse("""
+            <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                             TargetType="{x:Type MenuItem}">
+              <Border x:Name="Row" CornerRadius="7" Padding="10,7" Background="Transparent">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="Check" Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
+                             FontSize="11" Foreground="#E87A3E" VerticalAlignment="Center"
+                             Visibility="Collapsed"/>
+                  <ContentPresenter ContentSource="Header" Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    TextBlock.Foreground="{DynamicResource T.TextPrimary}"/>
+                </StackPanel>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                  <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
+                </Trigger>
+                <Trigger Property="IsHighlighted" Value="True">
+                  <Setter TargetName="Row" Property="Background" Value="#1426262D"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+            """);
 
     /// <summary>语言切换：更新悬浮条标题与小标签（设备名随下一次广播刷新）。</summary>
     private void ApplyLanguage()

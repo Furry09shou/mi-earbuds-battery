@@ -286,6 +286,7 @@ public static class L
         ["mini.title"] = ("绒汇电量条", "Ronghui Battery Bar"),
         ["mini.caseLabel"] = ("仓", "Case"),
         ["mini.earbuds"] = ("耳机", "Earbuds"),
+        ["mini.all"] = ("整机", "All"),
         ["parser.unknown"] = ("未知耳机", "Unknown earbuds"),
 
         // ================= 电量提醒与统计 =================

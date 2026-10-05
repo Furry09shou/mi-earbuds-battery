@@ -56,6 +56,10 @@ public partial class App : Application
         _miniBar = new MiniBarWindow(_config)
         {
             OpenMainRequested = () => ShowMainWindow(),
+            SystemBatteryProvider = () => _window?.ActiveSystemBattery,
+            DeviceListProvider = () => _window?.KnownDeviceList() ?? Array.Empty<(string, string)>(),
+            ActiveMacProvider = () => _window?.ActiveMac,
+            DeviceSwitchRequested = mac => Dispatcher.Invoke(() => _window?.SelectDeviceByMac(mac)),
         };
 
         _tray = new TrayController(_watcher, _config)
