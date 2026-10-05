@@ -979,7 +979,12 @@ public partial class MainWindow : Window
     {
         _adapterPage = -1;
         AdapterTitle.Text = "适配名单";
-        ModelList.ItemsSource = XiaomiAdvParser.GetSupportedNames();
+        // 已适配（绿色）+ 实测确认不支持分耳的机型（红色，悬停看分析结论）
+        var entries = XiaomiAdvParser.GetSupportedNames()
+            .Select(n => new ModelEntry(n, true, "厂商 BLE 广播私有协议，可实时解析左右耳与充电仓电量"))
+            .Concat(UnsupportedModels)
+            .ToList();
+        ModelList.ItemsSource = entries;
         ShowOnlyAdapterPage(AdapterListPage);
         DotsRow.Visibility = Visibility.Collapsed;
         LiveBox.Visibility = Visibility.Collapsed;
@@ -988,6 +993,20 @@ public partial class MainWindow : Window
         AnimateWindowHeight(AdapterListHeight, instant);
         AnimateAdapterView(instant);
     }
+
+    /// <summary>适配名单条目（含已验证不支持分耳电量的机型）。</summary>
+    public sealed record ModelEntry(string Name, bool Supported, string Note);
+
+    /// <summary>
+    /// 实测确认广播不含电量、无法适配分耳的机型（随 Issue 分析结论更新）。
+    /// </summary>
+    private static readonly ModelEntry[] UnsupportedModels =
+    {
+        new("SOAIY GD31", false,
+            "两次采集共 244 包实测：蓝牙广播仅含序列号帧（ASCII SN）与自身 MAC 帧，20 分钟零变化，" +
+            "不含电量数据。电量仅经经典蓝牙 AVRCP 上报整机电量，软件以绿色小字显示。" +
+            "分析结论见 GitHub Issue #1。"),
+    };
 
     private void ShowAdapterPage(int page)
     {
