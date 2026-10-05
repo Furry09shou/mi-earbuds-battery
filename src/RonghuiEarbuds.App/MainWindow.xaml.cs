@@ -784,6 +784,7 @@ public partial class MainWindow : Window
         CooldownSlider.Value = Math.Clamp(_config.PopupCooldownMinutes, 1, 30);
         CooldownValue.Text = $"{(int)CooldownSlider.Value} 分钟";
         MiniBarCheck.IsChecked = _config.MiniBarEnabled;
+        RefreshThemeLabel();
     }
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => ShowSettingsView();
@@ -839,6 +840,27 @@ public partial class MainWindow : Window
         QuietHoursButton.Content = $"{_config.QuietStartHour:00}:00 – {_config.QuietEndHour:00}:00";
         QuietHoursButton.Opacity = _config.QuietHoursEnabled ? 1.0 : 0.45;
     }
+
+    // 外观三态：跟随系统（默认）/ 深色 / 浅色
+    private static readonly string[] ThemeModes = { "system", "dark", "light" };
+
+    private void ThemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var idx = Array.IndexOf(ThemeModes, _config.ThemeMode);
+        var next = ThemeModes[((idx < 0 ? 0 : idx) + 1) % ThemeModes.Length];
+        _config.ThemeMode = next;
+        _config.Save();
+        ThemeManager.SetMode(next);
+        RefreshThemeLabel();
+    }
+
+    private void RefreshThemeLabel() =>
+        ThemeButton.Content = _config.ThemeMode switch
+        {
+            "dark" => "深色",
+            "light" => "浅色",
+            _ => "跟随系统",
+        };
 
     private void DropAlertCheck_Changed(object sender, RoutedEventArgs e)
     {

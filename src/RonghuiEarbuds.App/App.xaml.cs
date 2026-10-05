@@ -38,9 +38,8 @@ public partial class App : Application
 
         Core.EarbudsWatcher.DiagLog("启动：单实例检查通过");
 
-        Core.ThemeManager.Initialize();   // 深浅主题跟随 Windows
-
         _config = AppConfig.Load();
+        Core.ThemeManager.Initialize(_config);   // 深浅主题：默认跟随 Windows，可手动切换
         AutoStartHelper.EnsureMinimizedFlag();   // 旧版自启动值升级为托盘启动
         _watcher = new EarbudsWatcher(_config);
 

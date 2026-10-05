@@ -507,11 +507,19 @@
                             </Grid>
                         </Border>
                         <Border Style="{StaticResource SettingsCard}">
-                            <StackPanel>
-                                <TextBlock Text="外观" Style="{StaticResource SettingTitle}"/>
-                                <TextBlock Text="深浅主题自动跟随 Windows 系统设置，无需手动切换"
-                                           Style="{StaticResource SettingSub}"/>
-                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="外观" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock Text="深浅主题可手动切换，默认跟随 Windows 系统设置"
+                                               Style="{StaticResource SettingSub}"/>
+                                </StackPanel>
+                                <Button x:Name="ThemeButton" Grid.Column="1" Style="{StaticResource GhostButton}"
+                                        Content="跟随系统" Click="ThemeButton_Click" Margin="10,0,0,0"/>
+                            </Grid>
                         </Border>
                         <TextBlock TextWrapping="Wrap" FontSize="10" Margin="2,2,0,10"
                                    Foreground="{DynamicResource T.TextDim}"

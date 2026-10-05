@@ -50,6 +50,9 @@ public sealed class AppConfig
     public double? MiniBarLeft { get; set; }
     public double? MiniBarTop { get; set; }
 
+    /// <summary>外观模式：system=跟随 Windows（默认）/ dark=深色 / light=浅色。</summary>
+    public string ThemeMode { get; set; } = "system";
+
     private static string Dir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RonghuiEarbuds");
     private static string FilePath => Path.Combine(Dir, "config.json");

@@ -46,24 +46,49 @@ public static class ThemeManager
     };
 
     private static System.Windows.Threading.DispatcherTimer? _pollTimer;
+    private static string _mode = "system";   // system / dark / light
 
-    public static void Initialize()
+    public static void Initialize(AppConfig config)
     {
-        Apply(ReadSystemIsDark());
+        _mode = config.ThemeMode switch
+        {
+            "dark" => "dark",
+            "light" => "light",
+            _ => "system",
+        };
+        Apply(Resolve());
 
-        // 注册表变更不一定发 WM_SETTINGCHANGE 广播，双保险：轮询 + 系统事件
+        // 注册表变更不一定发 WM_SETTINGCHANGE 广播，双保险：轮询 + 系统事件；
+        // 手动指定深/浅时不跟随系统
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += (_, args) =>
         {
             if (args.Category == Microsoft.Win32.UserPreferenceCategory.General)
-                Application.Current?.Dispatcher.BeginInvoke(() => Apply(ReadSystemIsDark()));
+                Application.Current?.Dispatcher.BeginInvoke(() =>
+                {
+                    if (_mode == "system") Apply(ReadSystemIsDark());
+                });
         };
         _pollTimer = new System.Windows.Threading.DispatcherTimer
         {
             Interval = TimeSpan.FromSeconds(10),
         };
-        _pollTimer.Tick += (_, _) => Apply(ReadSystemIsDark());
+        _pollTimer.Tick += (_, _) => { if (_mode == "system") Apply(ReadSystemIsDark()); };
         _pollTimer.Start();
     }
+
+    /// <summary>切换外观模式：system=跟随系统 / dark / light。</summary>
+    public static void SetMode(string mode)
+    {
+        _mode = mode switch { "dark" => "dark", "light" => "light", _ => "system" };
+        Apply(Resolve());
+    }
+
+    private static bool Resolve() => _mode switch
+    {
+        "dark" => true,
+        "light" => false,
+        _ => ReadSystemIsDark(),
+    };
 
     private static bool ReadSystemIsDark()
     {
