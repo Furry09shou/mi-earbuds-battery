@@ -20,6 +20,7 @@ public sealed class MiniBarWindow : Window
 
     private readonly AppConfig _config;
     private readonly TextBlock _nameText = new() { FontSize = 10.5, FontWeight = FontWeights.SemiBold };
+    private readonly Canvas _nameCanvas = new();   // Canvas 用无限约束测量，保证拿到完整文字宽度
     private readonly Grid _nameHost = new() { ClipToBounds = true };
     private readonly TranslateTransform _nameShift = new();
     private string _lastName = "";
@@ -90,12 +91,15 @@ public sealed class MiniBarWindow : Window
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         _nameText.SetResourceReference(TextBlock.ForegroundProperty, "T.TextSecondary");
-        _nameText.VerticalAlignment = VerticalAlignment.Center;
-        _nameText.HorizontalAlignment = HorizontalAlignment.Left;
         _nameText.RenderTransform = _nameShift;
-        _nameHost.Children.Add(_nameText);
+        _nameCanvas.Children.Add(_nameText);
+        _nameHost.Children.Add(_nameCanvas);
         _nameHost.VerticalAlignment = VerticalAlignment.Center;
-        _nameHost.SizeChanged += (_, _) => UpdateMarquee();
+        _nameHost.SizeChanged += (_, _) =>
+        {
+            CenterName();
+            UpdateMarquee();
+        };
         Grid.SetColumn(_nameHost, 0);
         grid.Children.Add(_nameHost);
 
@@ -154,8 +158,12 @@ public sealed class MiniBarWindow : Window
         {
             _lastName = name;
             _nameText.Text = name;
-            // 等布局完成后再判断是否需要跑马灯
-            Dispatcher.BeginInvoke(UpdateMarquee, DispatcherPriority.Loaded);
+            // 等布局完成后再垂直居中并判断是否需要跑马灯
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                CenterName();
+                UpdateMarquee();
+            }), DispatcherPriority.Loaded);
         }
         _broadcastSeen = u.Timestamp;
         var s = u.Snapshot;
@@ -169,16 +177,22 @@ public sealed class MiniBarWindow : Window
         Render();
     }
 
+    /// <summary>Canvas 不做拉伸布局，手动把名字垂直居中。</summary>
+    private void CenterName() =>
+        Canvas.SetTop(_nameText, Math.Max(0, (_nameHost.ActualHeight - _nameText.ActualHeight) / 2));
+
     /// <summary>
     /// 名字放不下时左右来回滑动（跑马灯）；放得下则复位静止。
+    /// Canvas 测量不受列宽约束，ActualWidth 即完整文字宽度。
     /// </summary>
     private void UpdateMarquee()
     {
         _nameShift.BeginAnimation(TranslateTransform.XProperty, null);
-        _nameText.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        double textW = _nameText.DesiredSize.Width;
+        double textW = _nameText.ActualWidth;
         double viewW = _nameHost.ActualWidth;
-        if (viewW <= 0 || textW <= viewW + 0.5)
+        if (viewW <= 0 || textW <= 0)
+            return;   // 尚未完成布局，SizeChanged/Loaded 时机回来重判
+        if (textW <= viewW + 0.5)
         {
             _nameShift.X = 0;
             return;

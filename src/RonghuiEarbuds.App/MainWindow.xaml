@@ -564,7 +564,7 @@
                     <!-- 名单页 -->
                     <StackPanel x:Name="AdapterListPage">
                         <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource T.TextSecondary}"
-                                   Text="绿色机型已完成协议适配，软件可直接解析分耳电量；红色机型经实测确认广播不含电量，只能显示整机电量。列表随版本更新持续增加。"/>
+                                   Text="绿色机型已完成协议适配，红色机型因设备原因无法适配。"/>
                         <ItemsControl x:Name="ModelList" Margin="0,12,0,0">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -588,15 +588,16 @@
                                                                Foreground="{DynamicResource T.Good}"/>
                                                 </Border>
                                             </StackPanel>
-                                            <TextBlock Text="{Binding Note}" FontSize="10.5" Margin="30,4,0,0"
+                                            <TextBlock x:Name="NoteText" Text="{Binding Note}" FontSize="10.5"
+                                                       Margin="30,4,0,0" Visibility="Collapsed"
                                                        Foreground="{DynamicResource T.TextDim}"
                                                        TextWrapping="Wrap" MaxWidth="300"
-                                                       TextTrimming="CharacterEllipsis"
                                                        TextOptions.TextFormattingMode="Ideal"/>
                                         </StackPanel>
                                     </Border>
                                     <DataTemplate.Triggers>
                                         <DataTrigger Binding="{Binding Supported}" Value="False">
+                                            <Setter TargetName="NoteText" Property="Visibility" Value="Visible"/>
                                             <Setter TargetName="IconBg" Property="Background" Value="#3A2626"/>
                                             <Setter TargetName="IconGlyph" Property="Text" Value="&#xE711;"/>
                                             <Setter TargetName="IconGlyph" Property="Foreground"
@@ -612,7 +613,7 @@
                         </ItemsControl>
                         <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource T.TextSecondary}"
                                    Margin="0,4,0,0"
-                                   Text="红色机型经实测确认广播不含电量数据，软件只能显示蓝牙整机电量。没找到你的耳机？点右下角「适配新耳机」，按向导采集广播数据即可众包适配。"/>
+                                   Text="没找到你的耳机？点右下角「适配新耳机」，按向导采集广播数据即可众包适配。"/>
                     </StackPanel>
 
                     <!-- 向导页 0：写入型号 -->
