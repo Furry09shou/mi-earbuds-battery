@@ -110,6 +110,13 @@ public partial class App : Application
             if (u.Mac != _window?.ActiveMac) return;   // 多设备：只提示当前关注的设备
             var cooldown = TimeSpan.FromMinutes(Math.Clamp(_config.PopupCooldownMinutes, 1, 60));
             if (!quiet || now - lastShowAt < cooldown) return;
+            if (Core.FullscreenProbe.IsForegroundFullscreen())
+            {
+                // 前台是全屏应用（游戏/视频）：不打断用户；不消耗冷却，
+                // 退出全屏后下次开盖仍会弹
+                Core.EarbudsWatcher.DiagLog("前台全屏，开盖弹窗抑制");
+                return;
+            }
             lastShowAt = now;
             Core.EarbudsWatcher.DiagLog("开盖拿到广播数据：主窗口拉起到最上层");
             ShowMainWindowTop();

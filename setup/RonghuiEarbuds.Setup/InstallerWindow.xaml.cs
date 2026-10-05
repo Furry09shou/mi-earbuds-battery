@@ -207,10 +207,11 @@ public partial class InstallerWindow : Window
     {
         if (!SetupLogic.IsDotNetDesktopRuntimeInstalled())
         {
-            var r = MessageBox.Show(this,
+            var r = SetupDialog.Show(this,
+                Loc.T("setup.netTitle"),
                 Loc.T("setup.netBody"),
-                Loc.T("setup.netTitle"), MessageBoxButton.YesNo, MessageBoxImage.Information);
-            if (r == MessageBoxResult.Yes)
+                Loc.T("setup.netGo"), Loc.T("setup.netSkip"));
+            if (r)
             {
                 try
                 {

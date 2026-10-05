@@ -1,14 +1,18 @@
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using RonghuiEarbuds.App.Core;
 using RonghuiEarbuds.App.UI;
+using Shapes = System.Windows.Shapes;
 
 namespace RonghuiEarbuds.App;
 
@@ -53,10 +57,15 @@ public partial class MainWindow : Window
 
     /// <summary>设备是否存活：LastSeen（广播或连接枚举心跳刷新）60 秒内有更新。
     /// 广播不可靠（连接播放停发、未适配机型从不广播），连接心跳才是存活依据。</summary>
-    public bool IsDeviceAlive(string mac) =>
-        _devices.TryGetValue(mac, out var st) &&
-        st.LastSeen != DateTime.MinValue &&
-        (DateTime.Now - st.LastSeen).TotalSeconds <= 60;
+    public bool IsDeviceAlive(string mac)
+    {
+        if (!_devices.TryGetValue(mac, out var st)) return false;
+        var now = DateTime.Now;
+        // 广播心跳（LastSeen）或连接心跳（ConnSeen）任一在 60 秒内即在线：
+        // 连接播放/合盖期间广播停发、LastSeen 停走，但连接枚举每 5 秒仍在刷 ConnSeen
+        return (st.LastSeen != DateTime.MinValue && (now - st.LastSeen).TotalSeconds <= 60) ||
+               (st.ConnSeen != DateTime.MinValue && (now - st.ConnSeen).TotalSeconds <= 60);
+    }
 
     /// <summary>悬浮条右键菜单用：值得列出的设备（已持久化名单 + 近期见过的设备）。</summary>
     public IReadOnlyList<(string Name, string Mac)> KnownDeviceList() =>
@@ -101,6 +110,11 @@ public partial class MainWindow : Window
         /// <summary>最后一次收到有效广播的时间（连接心跳不刷新此值，两者语义不同）。</summary>
         public DateTime BroadcastSeen = DateTime.MinValue;
         public int? Rssi;
+
+        /// <summary>最后一次经连接枚举确认在线的时间（每 5 秒刷新）。
+        /// 已适配设备的 LastSeen 只记「最后广播」，连接播放/合盖期间停走——
+        /// 在线判定与系统电量兜底必须兼看 ConnSeen，否则连着的设备会被误判离线。</summary>
+        public DateTime ConnSeen = DateTime.MinValue;
 
         /// <summary>false = 广播格式未适配（系统连接枚举发现，只有在线状态无电量）。</summary>
         public bool IsAdapted = true;
@@ -165,6 +179,13 @@ public partial class MainWindow : Window
             if (_probeTick % 30 == 0) RefreshStats();
         };
         _aliveTimer.Start();
+
+        // 分享菜单行文案在模板应用后才能改写（Popup 首次打开时设置）
+        StatsSharePopup.Opened += (_, _) =>
+        {
+            SetRowText(ExportImageItem, "stats.exportImage");
+            SetRowText(CopyTextItem, "stats.copyText");
+        };
 
         Loaded += (_, _) =>
         {
@@ -392,12 +413,18 @@ public partial class MainWindow : Window
 
     // ---------- 系统电量兜底（HFP/AVRCP 上报，蓝牙设置页同源） ----------
 
-    /// <summary>每 15 秒读一次当前设备的系统级电量，广播暂停/未适配时兜底显示。</summary>
+    /// <summary>每 15 秒读一次系统级电量：所有在线设备都读（悬浮条多行兜底需要
+    /// 每台设备的值，不只是关注设备），广播暂停/未适配时兜底显示。</summary>
     private void ProbeSystemBattery()
     {
-        if (_active is not { } st) return;
-        st.SystemBattery = SystemBatteryProbe.GetLevel(st.Mac);
-        _history.RecordSystem(st.Mac, st.SystemBattery);   // 广播停止期间保持历史连续
+        foreach (var st in _devices.Values)
+        {
+            // 离线设备跳过：BTHENUM 属性断连后仍在（旧值会误导），且 SystemBatteryOf
+            // 的在线门控也挡住了它；关注设备无论在线与否都读，保持绿字行为不变
+            if (!ReferenceEquals(st, _active) && !IsDeviceAlive(st.Mac)) continue;
+            st.SystemBattery = SystemBatteryProbe.GetLevel(st.Mac);
+            _history.RecordSystem(st.Mac, st.SystemBattery);   // 广播停止期间保持历史连续
+        }
         RefreshAliveState();   // 重新渲染（alive 状态可能未变，但电量值更新了）
     }
 
@@ -556,6 +583,7 @@ public partial class MainWindow : Window
         LblCaseTitle.Text = L.T("main.caseTitle");
         CaseHintText.Text = L.T("main.caseHint");
         LblStatsUsedLabel.Text = L.T("main.usedToday");
+        StatsShareButton.ToolTip = L.T("stats.shareTip");
 
         if (_updateInfo is null)
             UpdateButton.Content = L.T("main.checkUpdate");
@@ -751,13 +779,20 @@ public partial class MainWindow : Window
             // 没有任何活动端点提到它 → 未连接
             if (!endpoints.Any(ep => ep.Contains(name, StringComparison.OrdinalIgnoreCase)))
                 continue;
-            // 已适配设备（广播能解析出显示名）不重复登记（宽匹配，兼容系统名带后缀）
-            if (_devices.Values.Any(d => d.IsAdapted && d.Name.Length > 0 &&
-                                         NameMatchesProfile(name, d.Name)))
+            // 已适配设备（广播能解析出显示名）不重复登记（宽匹配，兼容系统名带后缀）；
+            // 但连接心跳必须刷到它头上——连接播放/合盖期间广播停发、LastSeen 停走，
+            // 悬浮条的在线灰显与系统电量兜底全靠 ConnSeen 维持
+            var adapted = _devices.Values.FirstOrDefault(d => d.IsAdapted && d.Name.Length > 0 &&
+                                                               NameMatchesProfile(name, d.Name));
+            if (adapted is not null)
+            {
+                adapted.ConnSeen = DateTime.Now;
                 continue;
+            }
             if (_devices.TryGetValue(mac, out var st))
             {
                 st.LastSeen = DateTime.Now;   // 已登记的设备：刷新在线心跳
+                st.ConnSeen = DateTime.Now;
                 // 之前按未适配登记的条目，名字对上已知格式就补升级（无需等广播）
                 if (!st.IsAdapted && IsKnownFormatName(name))
                 {
@@ -1159,6 +1194,286 @@ public partial class MainWindow : Window
         }
     }
 
+    // ==================== 电量日报导出（分享用：图片 / 文本） ====================
+
+    private void StatsShareButton_Click(object sender, RoutedEventArgs e) =>
+        StatsSharePopup.IsOpen = true;
+
+    /// <summary>模板内的 TextBlock 只能经 Template.FindName 定位（x:Name 不会生成字段）。</summary>
+    private static void SetRowText(Button b, string key)
+    {
+        if (b.Template?.FindName("Lbl", b) is TextBlock tb)
+            tb.Text = L.T(key);
+    }
+
+    private void ExportImage_Click(object sender, RoutedEventArgs e)
+    {
+        StatsSharePopup.IsOpen = false;
+        if (_active is not { } st) return;
+        try
+        {
+            var card = BuildExportCard(st);
+            const double w = 640;
+            card.Measure(new Size(w, double.PositiveInfinity));
+            card.Arrange(new Rect(0, 0, w, card.DesiredSize.Height));
+            card.UpdateLayout();
+            const double scale = 2;   // 2x 超采样，高分屏/系统缩放下导出不糊
+            var rtb = new RenderTargetBitmap(
+                (int)Math.Round(w * scale), (int)Math.Round(card.DesiredSize.Height * scale),
+                96 * scale, 96 * scale, PixelFormats.Pbgra32);
+            rtb.Render(card);
+
+            var dlg = new SaveFileDialog
+            {
+                Filter = "PNG|*.png",
+                Title = L.T("stats.exportImage"),
+                FileName = $"{SafeFileToken(st.Name.Length > 0 ? st.Name : "RonghuiEarbuds")}-" +
+                           $"{L.T("stats.report")}-{DateTime.Now:yyyyMMdd}.png",
+            };
+            if (dlg.ShowDialog(this) == true)
+            {
+                var enc = new PngBitmapEncoder();
+                enc.Frames.Add(BitmapFrame.Create(rtb));
+                using (var fs = File.Create(dlg.FileName))
+                    enc.Save(fs);
+                FlashShareButton();
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageDialog.Show(this, L.T("wizard.failTitle"),
+                L.F("wizard.failFmt", ex.Message), DialogKind.Error);
+        }
+    }
+
+    private void CopyText_Click(object sender, RoutedEventArgs e)
+    {
+        StatsSharePopup.IsOpen = false;
+        if (_active is not { } st) return;
+        try
+        {
+            Clipboard.SetText(BuildExportText(st));
+            FlashShareButton();
+        }
+        catch (Exception ex)
+        {
+            MessageDialog.Show(this, L.T("wizard.failTitle"),
+                L.F("wizard.failFmt", ex.Message), DialogKind.Error);
+        }
+    }
+
+    /// <summary>分享按钮图标短暂变绿勾，给无弹窗的操作一个轻反馈。</summary>
+    private void FlashShareButton()
+    {
+        if (StatsShareButton.Template?.FindName("Ico", StatsShareButton) is not TextBlock ico) return;
+        ico.Text = "\uE73E";
+        ico.Foreground = new SolidColorBrush(ThemeManager.GetColor("T.Good"));
+        var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.4) };
+        t.Tick += (_, _) =>
+        {
+            t.Stop();
+            ico.Text = "\uE72D";
+            ico.SetResourceReference(TextBlock.ForegroundProperty, "T.TextSecondary");
+        };
+        t.Start();
+    }
+
+    private string BuildExportText(DeviceState st)
+    {
+        static string Part((int Value, DateTime Time, int Suppressed)? s) =>
+            s is { } v && (DateTime.Now - v.Time).TotalSeconds <= ChannelFreshSeconds
+                ? $"{v.Value}%" : "--";
+
+        var sb = new StringBuilder();
+        sb.Append(L.T("main.title")).Append(" · ").Append(L.T("stats.report"))
+          .Append(' ').AppendLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
+        sb.Append(L.T("stats.device")).Append(L.T("stats.colon"))
+          .AppendLine(st.Name.Length > 0 ? st.Name : L.T("main.identifying"));
+        sb.Append(L.T("main.left")).Append(' ').Append(Part(st.Left)).Append(" · ")
+          .Append(L.T("main.right")).Append(' ').Append(Part(st.Right)).Append(" · ")
+          .Append(L.T("main.caseTitle")).Append(' ').AppendLine(Part(st.Case));
+        if (IsDeviceAlive(st.Mac) && st.SystemBattery is { } sv)
+            sb.AppendLine(L.F("state.sysBatteryFmt", sv));
+        try
+        {
+            var stats = _history.GetTodayStats(st.Mac);
+            if (stats.UsedPercent > 0)
+                sb.Append(L.T("main.usedToday")).Append(' ')
+                  .Append($"{(int)Math.Round(stats.UsedPercent)}%").Append(" · ");
+            bool charging = stats.EstimateText == L.T("battery.charging");
+            sb.AppendLine(charging ? L.T("battery.charging")
+                                   : L.F("main.estimateFmt", stats.EstimateText));
+        }
+        catch { /* 无历史时跳过统计行 */ }
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>导出图片卡片：标题 / 设备 / 三格大电量 / 统计行 / 当日曲线。
+    /// 离屏渲染（不进视觉树），颜色全部用 ThemeManager 实色——DynamicResource
+    /// 在游离元素上不可靠。</summary>
+    private Border BuildExportCard(DeviceState st)
+    {
+        SolidColorBrush Brush(string key) => new(ThemeManager.GetColor(key));
+
+        var card = new Border
+        {
+            Background = Brush("T.WindowBg"),
+            BorderBrush = Brush("T.CardBorder"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(18),
+            Padding = new Thickness(36, 28, 36, 24),
+            Width = 640,
+        };
+        var root = new StackPanel();
+
+        // 标题行：应用名 + 日期
+        var titleRow = new Grid();
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var titleText = new TextBlock
+        {
+            Text = L.T("main.title"), FontSize = 19, FontWeight = FontWeights.SemiBold,
+            Foreground = Brush("T.TextPrimary"), VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        var dateText = new TextBlock
+        {
+            Text = DateTime.Now.ToString("yyyy-MM-dd"), FontSize = 12,
+            Foreground = Brush("T.TextDim"), VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        Grid.SetColumn(titleText, 0);
+        Grid.SetColumn(dateText, 1);
+        titleRow.Children.Add(titleText);
+        titleRow.Children.Add(dateText);
+        root.Children.Add(titleRow);
+
+        // 设备行
+        root.Children.Add(new TextBlock
+        {
+            Text = L.T("stats.device") + L.T("stats.colon") +
+                   (st.Name.Length > 0 ? st.Name : L.T("main.identifying")),
+            FontSize = 13, Margin = new Thickness(0, 7, 0, 0),
+            Foreground = Brush("T.TextSecondary"),
+        });
+
+        // 三格大数字（电量色随电量值，与主面板圆环同源）
+        var chGrid = new Grid { Margin = new Thickness(0, 20, 0, 12) };
+        var channels = new (string Label, (int Value, DateTime Time, int Suppressed)? Ch)[]
+        {
+            (L.T("main.left"), st.Left),
+            (L.T("main.right"), st.Right),
+            (L.T("main.caseTitle"), st.Case),
+        };
+        for (var i = 0; i < 3; i++)
+        {
+            chGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var (label, tup) = channels[i];
+            int? v = tup is { } t && (DateTime.Now - t.Time).TotalSeconds <= ChannelFreshSeconds
+                ? t.Value : null;
+            var panel = new StackPanel();
+            panel.Children.Add(new TextBlock
+            {
+                Text = v is { } fv ? $"{fv}%" : "--",
+                FontSize = 34, FontWeight = FontWeights.Bold,
+                Foreground = v is { } fv2 ? new SolidColorBrush(ThemeManager.ColorFor(fv2)) : Brush("T.TextDim"),
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = label, FontSize = 12, Margin = new Thickness(0, 2, 0, 0),
+                Foreground = Brush("T.TextSecondary"),
+            });
+            Grid.SetColumn(panel, i);
+            chGrid.Children.Add(panel);
+        }
+        root.Children.Add(chGrid);
+
+        // 统计行
+        string statsLine;
+        BatteryDayStats? dayStats = null;
+        try { dayStats = _history.GetTodayStats(st.Mac); }
+        catch { /* 无历史时统计行退化为「--」 */ }
+        if (dayStats is { } ds)
+        {
+            bool charging = ds.EstimateText == L.T("battery.charging");
+            statsLine =
+                $"{L.T("main.usedToday")} {(ds.UsedPercent > 0 ? $"{(int)Math.Round(ds.UsedPercent)}%" : "--")}" +
+                $" · {(charging ? L.T("battery.charging") : L.F("main.estimateFmt", ds.EstimateText))}";
+        }
+        else statsLine = "--";
+        root.Children.Add(new TextBlock
+        {
+            Text = statsLine, FontSize = 13, Foreground = Brush("T.TextSecondary"),
+            Margin = new Thickness(0, 0, 0, 18),
+        });
+
+        // 当日曲线（大图）：网格线 + 淡填充 + 主题色折线
+        if (dayStats is { Curve.Count: >= 2 })
+        {
+            const double cw = 566, chh = 128;
+            var host = new Canvas { Width = cw, Height = chh };
+            for (int lv = 25; lv < 100; lv += 25)
+            {
+                var gy = chh - chh * lv / 100.0;
+                host.Children.Add(new Shapes.Line
+                {
+                    X1 = 0, X2 = cw, Y1 = gy, Y2 = gy,
+                    StrokeThickness = 1, Stroke = Brush("T.SubtleBorder"),
+                    StrokeDashArray = new DoubleCollection { 2, 3 }, Opacity = 0.8,
+                });
+            }
+            var pts = dayStats.Curve
+                .Select(p => new Point(p.X / 100.0 * cw, chh - p.Y / 100.0 * chh))
+                .ToList();
+            var accent = ThemeManager.GetColor("T.Accent");
+            var area = new StreamGeometry();
+            using (var ctx = area.Open())
+            {
+                ctx.BeginFigure(pts[0], true, false);
+                foreach (var p in pts.Skip(1)) ctx.LineTo(p, true, false);
+                ctx.LineTo(new Point(pts[^1].X, chh), true, false);
+                ctx.LineTo(new Point(pts[0].X, chh), true, false);
+            }
+            area.Freeze();
+            host.Children.Add(new Shapes.Path
+            {
+                Data = area, StrokeThickness = 0,
+                Fill = new SolidColorBrush(Color.FromArgb(26, accent.R, accent.G, accent.B)),
+            });
+            var lineGeo = new StreamGeometry();
+            using (var ctx = lineGeo.Open())
+            {
+                ctx.BeginFigure(pts[0], false, false);
+                foreach (var p in pts.Skip(1)) ctx.LineTo(p, true, false);
+            }
+            lineGeo.Freeze();
+            host.Children.Add(new Shapes.Path
+            {
+                Data = lineGeo,
+                Stroke = new SolidColorBrush(accent), StrokeThickness = 2.4,
+                StrokeLineJoin = PenLineJoin.Round,
+                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+            });
+            root.Children.Add(host);
+        }
+
+        // 页脚
+        root.Children.Add(new TextBlock
+        {
+            Text = "RonghuiEarbuds · github.com/Furry09shou/ronghui-earbuds",
+            FontSize = 10.5, Margin = new Thickness(0, 16, 0, 0), Foreground = Brush("T.TextDim"),
+        });
+
+        card.Child = root;
+        return card;
+    }
+
+    /// <summary>文件名安全化：保留字母数字/中文/空格与 -_，其余替换为 _。</summary>
+    private static string SafeFileToken(string s)
+    {
+        var clean = string.Concat(s.Select(ch =>
+            char.IsLetterOrDigit(ch) || ch is ' ' or '-' or '_' ? ch : '_'));
+        return clean.Length > 0 ? clean : "RonghuiEarbuds";
+    }
+
     // ==================== 适配视图：名单 + 分页向导（窗口内跳转） ====================
 
     private const string IssueUrlBase = "https://github.com/Furry09shou/ronghui-earbuds/issues/new";
@@ -1386,8 +1701,8 @@ public partial class MainWindow : Window
             ShowAdapterList(instant: false);
             return;
         }
-        if (MessageBox.Show(this, L.T("wizard.cancelConfirm"), L.T("adapter.wizardTitle"),
-                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        if (!UI.MessageDialog.Show(this, L.T("wizard.cancelConfirm"), L.T("adapter.wizardTitle"),
+                UI.DialogKind.Question, showCancel: true))
         {
             return;
         }
@@ -1506,17 +1821,17 @@ public partial class MainWindow : Window
                       $"&body={Uri.EscapeDataString(body)}";
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 
-            MessageBox.Show(this,
+            UI.MessageDialog.Show(this,
                 L.F("wizard.doneMsgFmt", _capture.Count, Path.GetFileName(analysisPath)),
-                L.T("wizard.doneTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+                L.T("wizard.doneTitle"), UI.DialogKind.Success);
             _adapterRunning = false;
             _capture.Dispose();
             ShowMainView();
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, L.F("wizard.failFmt", ex.Message), L.T("wizard.failTitle"),
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            UI.MessageDialog.Show(this, L.F("wizard.failFmt", ex.Message), L.T("wizard.failTitle"),
+                UI.DialogKind.Error);
         }
         finally
         {

@@ -211,6 +211,10 @@ public static class L
         ["wizard.failTitle"] = ("错误", "Error"),
         ["wizard.failFmt"] = ("导出失败：{0}", "Export failed: {0}"),
 
+        // ================= 应用内弹窗 =================
+        ["dialog.ok"] = ("确定", "OK"),
+        ["dialog.cancel"] = ("取消", "Cancel"),
+
         // ---- 向导步骤：双耳 + 充电仓 ----
         ["wizard.dual1T"] = ("双耳入仓，开盖等 10 秒", "Both buds in case, lid open, wait 10s"),
         ["wizard.dual1D"] = ("把两只耳机都放回充电仓，保持仓盖打开，等待约 10 秒——让耳机处于统一的初始状态，广播最完整。",
@@ -287,6 +291,14 @@ public static class L
         ["mini.caseLabel"] = ("仓", "Case"),
         ["mini.earbuds"] = ("耳机", "Earbuds"),
         ["mini.all"] = ("整机", "All"),
+
+        // ---- 电量日报导出 ----
+        ["stats.shareTip"] = ("导出 / 复制电量日报", "Export / copy battery report"),
+        ["stats.exportImage"] = ("导出图片（PNG）", "Export image (PNG)"),
+        ["stats.copyText"] = ("复制文本", "Copy text"),
+        ["stats.report"] = ("电量日报", "Battery report"),
+        ["stats.device"] = ("设备", "Device"),
+        ["stats.colon"] = ("：", ": "),
         ["parser.unknown"] = ("未知耳机", "Unknown earbuds"),
 
         // ================= 电量提醒与统计 =================

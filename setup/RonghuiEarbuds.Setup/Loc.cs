@@ -69,11 +69,13 @@ internal static class Loc
         // ---- .NET 运行时检测弹窗 ----
         ["setup.netTitle"] = ("需要 .NET 8 桌面运行时", ".NET 8 desktop runtime required"),
         ["setup.netBody"] = ("未检测到 .NET 8 桌面运行时（绒汇耳机助手运行必需）。\n\n" +
-                             "点击「是」打开微软官方下载页，安装运行时后即可正常使用；" +
+                             "点击「前往下载」打开微软官方下载页，安装运行时后即可正常使用；" +
                              "也可以稍后从开始菜单启动本程序。",
                              "The .NET 8 desktop runtime wasn't found (required to run Ronghui Earbuds).\n\n" +
-                             "Click \"Yes\" to open the official Microsoft download page; once installed, " +
+                             "Click \"Open download page\" to get it from Microsoft; once installed, " +
                              "the app will work. You can also launch the app later from the Start menu."),
+        ["setup.netGo"] = ("前往下载", "Open download page"),
+        ["setup.netSkip"] = ("跳过", "Skip"),
 
         // ---- 卸载器：确认面板 ----
         ["setup.confirmTitle"] = ("卸载 绒汇耳机助手？", "Uninstall Ronghui Earbuds?"),

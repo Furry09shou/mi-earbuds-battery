@@ -328,6 +328,7 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
@@ -345,6 +346,82 @@
                               Stroke="{DynamicResource T.Accent}" StrokeThickness="1.6"
                               StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                               Visibility="Collapsed"/>
+                        <!-- 分享电量日报：导出图片 / 复制文本 -->
+                        <Button x:Name="StatsShareButton" Grid.Column="3" Width="28" Height="28"
+                                Margin="10,0,0,0" VerticalAlignment="Center" Cursor="Hand"
+                                Click="StatsShareButton_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bg" Background="Transparent" CornerRadius="8">
+                                        <TextBlock x:Name="Ico" Text="&#xE72D;" FontFamily="Segoe MDL2 Assets"
+                                                   FontSize="13" HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource T.TextSecondary}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource T.HoverBg}"/>
+                                            <Setter TargetName="Ico" Property="Foreground" Value="{DynamicResource T.Accent}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <Popup x:Name="StatsSharePopup" Grid.Column="0"
+                               PlacementTarget="{Binding ElementName=StatsShareButton}"
+                               Placement="Top" StaysOpen="False" AllowsTransparency="True"
+                               PopupAnimation="Fade" VerticalOffset="4">
+                        <Border Background="{DynamicResource T.CardBg}" BorderBrush="{DynamicResource T.InputBorder}"
+                                BorderThickness="1" CornerRadius="10" Padding="6" MinWidth="196" Margin="14,10,14,16">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.45"/>
+                            </Border.Effect>
+                            <StackPanel>
+                                <Button x:Name="ExportImageItem" Click="ExportImage_Click" Cursor="Hand">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Row" Background="Transparent" CornerRadius="7" Padding="10,7">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource T.TextSecondary}"/>
+                                                    <TextBlock x:Name="Lbl" Text="导出图片" FontSize="12.5"
+                                                               VerticalAlignment="Center" Margin="10,0,0,0"
+                                                               Foreground="{DynamicResource T.TextPrimary}"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource T.HoverBg}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                                <Button x:Name="CopyTextItem" Click="CopyText_Click" Cursor="Hand">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Row" Background="Transparent" CornerRadius="7" Padding="10,7">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE8C8;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource T.TextSecondary}"/>
+                                                    <TextBlock x:Name="Lbl" Text="复制文本" FontSize="12.5"
+                                                               VerticalAlignment="Center" Margin="10,0,0,0"
+                                                               Foreground="{DynamicResource T.TextPrimary}"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource T.HoverBg}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
                     </Grid>
                 </Border>
 

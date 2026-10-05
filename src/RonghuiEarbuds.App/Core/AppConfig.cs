@@ -84,7 +84,13 @@ public sealed class AppConfig
         try
         {
             Directory.CreateDirectory(Dir);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOpts));
+            // 先写临时文件再原子替换：避免断电/进程被杀时写坏 config.json 丢失全部设置
+            var tmp = FilePath + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(this, JsonOpts));
+            if (File.Exists(FilePath))
+                File.Replace(tmp, FilePath, null);
+            else
+                File.Move(tmp, FilePath);
         }
         catch (Exception ex)
         {
