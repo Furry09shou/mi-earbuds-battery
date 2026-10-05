@@ -81,7 +81,7 @@ public sealed class MiniBarWindow : Window
         _config = config;
 
         Width = 272;   // 窗口=卡片尺寸（无留白），高度随勾选行数在 Render 时调整
-        Height = 92;
+        Height = 48;
         WindowStartupLocation = WindowStartupLocation.Manual;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -228,8 +228,10 @@ public sealed class MiniBarWindow : Window
         for (var i = 0; i < list.Count; i++)
             RenderRow(_rows[i], list[i].Mac, list[i].Dev);
 
-        // 行数变化 → 调整窗口高度（宽度固定）
-        double h = 48 + list.Count * RowHeight + Math.Max(0, list.Count - 1) * RowGap;
+        // 行数变化 → 调整窗口高度（宽度固定）。
+        // 窗口=卡片尺寸：内容 = 行堆栈上下 margin 4 + 行数*行高 + 行间分隔 gap
+        //（旧公式开头多算的 48 是已删除的标题区残留，会留下 44px 大下巴）
+        double h = 4 + list.Count * RowHeight + Math.Max(0, list.Count - 1) * RowGap;
         if (Math.Abs(Height - h) > 0.5)
             Height = h;
     }
