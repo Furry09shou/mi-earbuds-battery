@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 using RonghuiEarbuds.App.Core;
 using RonghuiEarbuds.App.UI;
 
@@ -16,6 +17,11 @@ public partial class App : Application
     private MainWindow? _window;
     private MiniBarWindow? _miniBar;
     private LowBatteryMonitor? _monitor;
+    private ChargeMonitor? _charge;
+    private VoiceService? _voice;
+    private MediaSession? _media;
+    private readonly GlobalHotKey _hotKey = new();
+    private DispatcherTimer? _sysTicker;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -41,6 +47,7 @@ public partial class App : Application
         _config = AppConfig.Load();
         Core.L.Initialize(_config.Language);   // 界面语言：system/zh/en（system 按系统 UI 文化解析）
         Core.ThemeManager.Initialize(_config);   // 深浅主题：默认跟随 Windows，可手动切换
+        _voice = new VoiceService();   // 系统 TTS（在选择语言后创建，便于挑对应语音）
         AutoStartHelper.EnsureMinimizedFlag();   // 旧版自启动值升级为托盘启动
         _watcher = new EarbudsWatcher(_config);
 
@@ -51,7 +58,8 @@ public partial class App : Application
                 _miniBar?.ApplyEnabled();
                 _tray?.SyncMiniBarChecked(enabled);
             }),
-            (mac, devName) => Dispatcher.Invoke(() => _miniBar?.SetDeviceName(mac, devName)));
+            (mac, devName) => Dispatcher.Invoke(() => _miniBar?.SetDeviceName(mac, devName)),
+            enabled => _hotKey.SetEnabled(_window!, enabled, () => ShowMainWindowTop()));
 
         _miniBar = new MiniBarWindow(_config)
         {
@@ -60,6 +68,7 @@ public partial class App : Application
             AliveProvider = mac => _window?.IsDeviceAlive(mac) ?? false,
             DeviceListProvider = () => _window?.KnownDeviceList() ?? Array.Empty<(string, string)>(),
             ActiveMacProvider = () => _window?.ActiveMac,
+            VoiceRequested = SpeakActive,
         };
 
         _tray = new TrayController(_watcher, _config)
@@ -78,11 +87,23 @@ public partial class App : Application
                 _window.ShowSettingsView();
             },
             ToggleMiniBarRequested = ToggleMiniBar,
+            VoiceRequested = SpeakActive,
             ExitRequested = ExitApp,
         };
 
-        // 低电量/骤降提醒：只处理关注设备，托盘气泡弹出
-        _monitor = new LowBatteryMonitor(_config, (title, msg) => _tray?.ShowBalloon(title, msg));
+        // 低电量/骤降提醒：只处理关注设备，托盘气泡弹出（语音播报开关在设置页）
+        _monitor = new LowBatteryMonitor(_config, (title, msg) =>
+        {
+            _tray?.ShowBalloon(title, msg);
+            if (_config.VoiceAlerts) _voice?.Speak(msg);
+        });
+
+        // 充满提醒：三通道齐满后报一次（同样遵守语音播报开关）
+        _charge = new ChargeMonitor(_config, (title, msg) =>
+        {
+            _tray?.ShowBalloon(title, msg);
+            if (_config.VoiceAlerts) _voice?.Speak(msg);
+        });
 
         _watcher.DeviceBound += name => Dispatcher.Invoke(() =>
         {
@@ -99,8 +120,9 @@ public partial class App : Application
         _watcher.UpdateReceived += u => Dispatcher.Invoke(() =>
         {
             _miniBar?.Push(u);
-            if (u.Mac == _window?.ActiveMac)
-                _monitor?.OnUpdate(u);
+            // 低电量 / 骤降 / 充满：全设备监控（每台独立状态、消息带名字），不只关注设备
+            _monitor?.OnUpdate(u);
+            _charge?.OnUpdate(u);
 
             var now = DateTime.Now;
             var quiet = now - lastDataAt > TimeSpan.FromSeconds(30);
@@ -139,8 +161,30 @@ public partial class App : Application
         _miniBar.ApplyEnabled();   // 恢复悬浮条开关状态
         if (_window.ActiveMac is { } startMac)   // 补投启动时已知的设备名
             _miniBar.SetDeviceName(startMac, _window.ActiveDeviceName);
+        _hotKey.SetEnabled(_window!, _config.HotKeyEnabled, () => ShowMainWindowTop());
+
+        // 悬浮条媒体栏同步系统播放内容（SMTC）；事件在后台线程，切回 UI 再喂
+        _media = new MediaSession();
+        _media.Changed += info => Dispatcher.Invoke(() =>
+            _miniBar?.SetMediaInfo(info.Title, info.Artist, info.Playing));
+        _ = _media.InitializeAsync();
+
+        // 低电量系统整机兜底：每隔 15 秒把各在线设备的系统电量喂给监控
+        //（连接播放期间分耳广播停发，低电量判断改用整机电量）
+        _sysTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+        _sysTicker.Tick += (_, _) =>
+        {
+            if (_window is null || _monitor is null) return;
+            foreach (var (name, mac) in _window.KnownDeviceList())
+                _monitor.OnSystemBattery(mac, name, _window.SystemBatteryOf(mac));
+        };
+        _sysTicker.Start();
+
         _ = CheckUpdateDailyAsync();
     }
+
+    /// <summary>语音播报当前显示设备的电量（悬浮条按钮 / 托盘菜单共用）。</summary>
+    private void SpeakActive() => _voice?.Speak(_window?.VoiceReportText() ?? L.T("voice.noDevice"));
 
     /// <summary>托盘/设置里切换悬浮条显示。</summary>
     private void ToggleMiniBar()
@@ -213,8 +257,11 @@ public partial class App : Application
         }
         catch { /* 悬浮条收尾失败不阻断退出 */ }
         _config.Save();
+        _sysTicker?.Stop();
         _tray?.Dispose();
         _watcher?.Dispose();
+        _voice?.Dispose();
+        _media?.Dispose();
         Shutdown();
     }
 

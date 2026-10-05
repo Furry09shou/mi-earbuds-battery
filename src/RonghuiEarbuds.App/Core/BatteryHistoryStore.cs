@@ -10,8 +10,9 @@ public sealed record HistorySample(
 /// <summary>当日统计结果。</summary>
 public sealed record BatteryDayStats(
     double UsedPercent,          // 今日累计耗电（各下降段之和）
-    string EstimateText,         // 「预计可用 …」/「充电中」/「--」
-    IReadOnlyList<(double X, double Y)> Curve);  // 归一化曲线点（0-100 空间，X=时间，Y=电量）
+    string EstimateText,         // 「预计可用 …」/「预计 … 充满」/「充电中」/「--」
+    IReadOnlyList<(double X, double Y)> Curve,  // 归一化曲线点（0-100 空间，X=时间，Y=电量）
+    int? MinutesToFull = null);  // 充电中：预计充满还需的分钟数（无有效斜率时为 null）
 
 /// <summary>
 /// 电量历史存储：按设备按天写 jsonl（%APPDATA%\RonghuiEarbuds\history\），
@@ -184,10 +185,31 @@ public sealed class BatteryHistoryStore
                 .Select(t => (t.Time, V: (int)t.Item2.V!))
                 .ToList();
             bool charging = samples.Count > 0 && samples[^1].AnyInCase;
+            int? minutesToFull = null;
 
             if (charging)
             {
-                estimate = L.T("battery.charging");
+                // 充电斜率：最近 45 分钟内的分耳上升斜率 → 预计充满时间
+                if (recent.Count >= 3)
+                {
+                    var first = recent[0];
+                    var lastV = recent[^1].V;
+                    var gain = lastV - first.V;
+                    var hours = (recent[^1].Time - first.Time).TotalHours;
+                    if (gain >= 1 && hours > 0.02)
+                    {
+                        var rate = gain / hours;   // %/h
+                        if (rate >= 3)
+                        {
+                            var mins = (100 - lastV) / rate * 60;
+                            if (mins >= 5 && mins <= 720)
+                                minutesToFull = (int)Math.Round(mins);
+                        }
+                    }
+                }
+                estimate = minutesToFull is { } m
+                    ? L.F("battery.etaFullFmt", m)
+                    : L.T("battery.charging");
             }
             else if (recent.Count >= 2)
             {
@@ -209,8 +231,19 @@ public sealed class BatteryHistoryStore
                 }
             }
 
-            return new BatteryDayStats(Math.Min(used, 300), estimate, pts);
+            return new BatteryDayStats(Math.Min(used, 300), estimate, pts, minutesToFull);
         }
+    }
+
+    /// <summary>某设备某天是否有电量记录（周报「使用天数」统计用，只查文件存在性）。</summary>
+    public static bool DayHasData(string mac, DateTime day)
+    {
+        try
+        {
+            var path = Path.Combine(RootDir, Sanitize(mac), $"{day:yyyy-MM-dd}.jsonl");
+            return File.Exists(path) && new FileInfo(path).Length > 4;
+        }
+        catch { return false; }
     }
 
     private static string Sanitize(string mac) =>

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
@@ -11,8 +11,8 @@
     <AssemblyName>RonghuiEarbuds</AssemblyName>
     <RootNamespace>RonghuiEarbuds.App</RootNamespace>
     <ApplicationIcon>..\..\assets\RonghuiEarbuds.ico</ApplicationIcon>
-    <Version>1.6.1</Version>
-    <!-- 用户装了更高版本运行时（9/10）也能直接运行，无需恰好是 8 -->
+    <Version>1.7.0</Version>
+    <!-- 用户装了更高版本运行时（11+）也能直接运行，无需恰好是 10；需要 .NET 10+ 桌面运行时 -->
     <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
 
@@ -20,6 +20,11 @@
   <ItemGroup>
     <Using Remove="System.Drawing" />
     <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <!-- 语音播报：官方 System.Speech 包（TTS 不在 .NET 桌面共享框架内，需显式引用） -->
+  <ItemGroup>
+    <PackageReference Include="System.Speech" Version="10.0.12" />
   </ItemGroup>
 
 </Project>

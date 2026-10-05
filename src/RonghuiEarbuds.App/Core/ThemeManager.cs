@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Media;
 
 namespace RonghuiEarbuds.App.Core;
 
@@ -11,6 +12,22 @@ public static class ThemeManager
 {
     private const string PersonalizeKey =
         @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+
+    /// <summary>可选强调色（设置页六色点）。默认橙，与品牌视觉一致。</summary>
+    public static readonly string[] AccentPresets =
+    {
+        "#E87A3E",   // 橙
+        "#4C8DD6",   // 蓝
+        "#8E7CC3",   // 紫
+        "#45A29E",   // 青
+        "#D9738F",   // 粉
+        "#6E8FB5",   // 蓝灰
+    };
+
+    private static string _accentHex = AccentPresets[0];
+
+    /// <summary>当前强调色（代码取色用，主题切换后与资源一致）。</summary>
+    public static Color AccentColor { get; private set; }
 
     /// <summary>当前是否深色。默认深色（应用的主形态）。</summary>
     public static bool IsDark { get; private set; } = true;
@@ -56,6 +73,7 @@ public static class ThemeManager
             "light" => "light",
             _ => "system",
         };
+        _accentHex = AccentPresets[Math.Clamp(config.AccentIndex, 0, AccentPresets.Length - 1)];
         Apply(Resolve());
 
         // 注册表变更不一定发 WM_SETTINGCHANGE 广播，双保险：轮询 + 系统事件；
@@ -83,6 +101,14 @@ public static class ThemeManager
         Apply(Resolve());
     }
 
+    /// <summary>切换强调色（设置页色点）；即时重刷所有 T.Accent 系画刷。</summary>
+    public static void SetAccent(int index)
+    {
+        if (index < 0 || index >= AccentPresets.Length) return;
+        _accentHex = AccentPresets[index];
+        Apply(IsDark);
+    }
+
     private static bool Resolve() => _mode switch
     {
         "dark" => true,
@@ -103,8 +129,11 @@ public static class ThemeManager
 
     private static void Apply(bool dark)
     {
-        if (dark == IsDark && Application.Current.Resources.Contains("T.WindowBg")) return;
+        if (dark == IsDark && Application.Current.Resources.Contains("T.WindowBg") &&
+            AccentColor == (Color)ColorConverter.ConvertFromString(_accentHex))
+            return;
         IsDark = dark;
+        AccentColor = (Color)ColorConverter.ConvertFromString(_accentHex);
 
         var res = Application.Current.Resources;
         foreach (var (key, darkHex, lightHex) in Palette)
@@ -114,8 +143,28 @@ public static class ThemeManager
                     dark ? darkHex : lightHex));
             res[key] = brush;
         }
+        // 强调色系覆盖：主色 + 悬停提亮 + 开关选中轨；深浅模式共用（选色均适配两种背景）
+        var hover = Lighten(AccentColor, 0.12);
+        res["T.Accent"] = new System.Windows.Media.SolidColorBrush(AccentColor);
+        res["T.AccentHover"] = new System.Windows.Media.SolidColorBrush(hover);
+        res["T.ToggleTrackOn"] = new System.Windows.Media.SolidColorBrush(Blend(AccentColor, dark, 0.32));
         ThemeChanged?.Invoke();
-        EarbudsWatcher.DiagLog($"主题切换：{(dark ? "深色" : "浅色")}（跟随系统）");
+        EarbudsWatcher.DiagLog($"主题切换：{(dark ? "深色" : "浅色")}，强调色 {_accentHex}（跟随系统）");
+    }
+
+    private static Color Lighten(Color c, double f) => Color.FromRgb(
+        (byte)Math.Min(255, c.R + (255 - c.R) * f),
+        (byte)Math.Min(255, c.G + (255 - c.G) * f),
+        (byte)Math.Min(255, c.B + (255 - c.B) * f));
+
+    /// <summary>向背景色混合：深色底提亮、浅色底压暗，保证开关选中轨可辨识。</summary>
+    private static Color Blend(Color accent, bool dark, double f)
+    {
+        byte bg = (byte)(dark ? 0x1A : 0xFF);
+        return Color.FromRgb(
+            (byte)(accent.R * (1 - f) + bg * f),
+            (byte)(accent.G * (1 - f) + bg * f),
+            (byte)(accent.B * (1 - f) + bg * f));
     }
 
     /// <summary>代码侧取主题色（未命中回退深色值）。</summary>

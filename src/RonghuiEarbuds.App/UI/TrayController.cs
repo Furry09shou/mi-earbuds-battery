@@ -21,6 +21,7 @@ public sealed class TrayController : IDisposable
     public Action? ShowWindowRequested { get; init; }
     public Action? ShowSettingsRequested { get; init; }
     public Action? ToggleMiniBarRequested { get; init; }
+    public Action? VoiceRequested { get; init; }
     public Action? ExitRequested { get; init; }
 
     private WinForms.ToolStripMenuItem _miniBarItem = new();
@@ -61,6 +62,7 @@ public sealed class TrayController : IDisposable
 
         var menu = new WinForms.ContextMenuStrip();
         menu.Items.Add(L.T("tray.showPanel"), null, (_, _) => ShowWindowRequested?.Invoke());
+        menu.Items.Add(L.T("tray.speak"), null, (_, _) => VoiceRequested?.Invoke());
         menu.Items.Add(L.T("main.settings"), null, (_, _) => ShowSettingsRequested?.Invoke());
         menu.Items.Add(_miniBarItem);
         menu.Items.Add(new WinForms.ToolStripSeparator());

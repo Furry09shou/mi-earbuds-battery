@@ -340,6 +340,8 @@
                             </StackPanel>
                             <TextBlock x:Name="StatsEstimateText" Text="预计可用 --" FontSize="10.5" Margin="0,3,0,0"
                                        Foreground="{DynamicResource T.TextGreen}"/>
+                            <TextBlock x:Name="StatsWearText" Text="--" FontSize="10" Margin="0,2,0,0"
+                                       Foreground="{DynamicResource T.TextDim}" TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
                         <Path x:Name="StatsCurve" Grid.Column="2" Width="150" Height="34"
                               Stretch="None" VerticalAlignment="Center"
@@ -407,6 +409,49 @@
                                                                VerticalAlignment="Center"
                                                                Foreground="{DynamicResource T.TextSecondary}"/>
                                                     <TextBlock x:Name="Lbl" Text="复制文本" FontSize="12.5"
+                                                               VerticalAlignment="Center" Margin="10,0,0,0"
+                                                               Foreground="{DynamicResource T.TextPrimary}"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource T.HoverBg}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                                <Border Height="1" Background="{DynamicResource T.SubtleBorder}" Margin="8,4"/>
+                                <Button x:Name="ExportWeekItem" Click="ExportWeek_Click" Cursor="Hand">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Row" Background="Transparent" CornerRadius="7" Padding="10,7">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE787;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource T.TextSecondary}"/>
+                                                    <TextBlock x:Name="Lbl" Text="导出周报图片" FontSize="12.5"
+                                                               VerticalAlignment="Center" Margin="10,0,0,0"
+                                                               Foreground="{DynamicResource T.TextPrimary}"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource T.HoverBg}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                                <Button x:Name="CopyWeekItem" Click="CopyWeek_Click" Cursor="Hand">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Row" Background="Transparent" CornerRadius="7" Padding="10,7">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE8A1;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource T.TextSecondary}"/>
+                                                    <TextBlock x:Name="Lbl" Text="复制本周报告" FontSize="12.5"
                                                                VerticalAlignment="Center" Margin="10,0,0,0"
                                                                Foreground="{DynamicResource T.TextPrimary}"/>
                                                 </StackPanel>
@@ -539,6 +584,36 @@
                                           Checked="DropAlertCheck_Changed" Unchecked="DropAlertCheck_Changed"/>
                             </Grid>
                         </Border>
+                        <Border Style="{StaticResource SettingsCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock x:Name="LblVoiceTitle" Text="低电量语音播报" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblVoiceSub" Text="提醒时同时用系统语音播报（需系统装语音）"
+                                               Style="{StaticResource SettingSub}"/>
+                                </StackPanel>
+                                <CheckBox x:Name="VoiceAlertsCheck" Grid.Column="1" Style="{StaticResource ToggleCheck}"
+                                          Checked="VoiceAlertsCheck_Changed" Unchecked="VoiceAlertsCheck_Changed"/>
+                            </Grid>
+                        </Border>
+                        <Border Style="{StaticResource SettingsCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock x:Name="LblChargeTitle" Text="充满提醒" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblChargeSub" Text="耳机与充电仓充满后可拔电时提醒"
+                                               Style="{StaticResource SettingSub}"/>
+                                </StackPanel>
+                                <CheckBox x:Name="ChargeFullCheck" Grid.Column="1" Style="{StaticResource ToggleCheck}"
+                                          Checked="ChargeFullCheck_Changed" Unchecked="ChargeFullCheck_Changed"/>
+                            </Grid>
+                        </Border>
 
                         <TextBlock x:Name="LblSecPopup" Text="弹窗" Style="{StaticResource SectionHeader}" Margin="2,10,0,6"/>
                         <Border Style="{StaticResource SettingsCard}">
@@ -593,6 +668,21 @@
                                           Checked="MiniBarCheck_Changed" Unchecked="MiniBarCheck_Changed"/>
                             </Grid>
                         </Border>
+                        <Border Style="{StaticResource SettingsCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock x:Name="LblMediaTitle" Text="悬浮条媒体控制" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblMediaSub" Text="悬浮条底部栏：上一曲 / 播放暂停 / 下一曲 / 语音播报"
+                                               Style="{StaticResource SettingSub}"/>
+                                </StackPanel>
+                                <CheckBox x:Name="MediaControlsCheck" Grid.Column="1" Style="{StaticResource ToggleCheck}"
+                                          Checked="MediaControlsCheck_Changed" Unchecked="MediaControlsCheck_Changed"/>
+                            </Grid>
+                        </Border>
 
                         <TextBlock x:Name="LblSecGeneral" Text="通用" Style="{StaticResource SectionHeader}" Margin="2,10,0,6"/>
                         <Border Style="{StaticResource SettingsCard}">
@@ -623,6 +713,48 @@
                                             Content="浅色" Margin="6,0,0,0" Click="ThemeSegment_Click"/>
                                 </StackPanel>
                             </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SettingsCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock x:Name="LblAccentTitle" Text="强调色" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblAccentSub" Text="界面高亮颜色，点击立即生效"
+                                               Style="{StaticResource SettingSub}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button x:Name="AccentDot0" Tag="0" Click="AccentDot_Click" Width="22" Height="22"
+                                            Margin="0,0,6,0" Cursor="Hand" ToolTip="橙"/>
+                                    <Button x:Name="AccentDot1" Tag="1" Click="AccentDot_Click" Width="22" Height="22"
+                                            Margin="0,0,6,0" Cursor="Hand" ToolTip="蓝"/>
+                                    <Button x:Name="AccentDot2" Tag="2" Click="AccentDot_Click" Width="22" Height="22"
+                                            Margin="0,0,6,0" Cursor="Hand" ToolTip="紫"/>
+                                    <Button x:Name="AccentDot3" Tag="3" Click="AccentDot_Click" Width="22" Height="22"
+                                            Margin="0,0,6,0" Cursor="Hand" ToolTip="青"/>
+                                    <Button x:Name="AccentDot4" Tag="4" Click="AccentDot_Click" Width="22" Height="22"
+                                            Margin="0,0,6,0" Cursor="Hand" ToolTip="粉"/>
+                                    <Button x:Name="AccentDot5" Tag="5" Click="AccentDot_Click" Width="22" Height="22"
+                                            Cursor="Hand" ToolTip="蓝灰"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border Style="{StaticResource SettingsCard}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock x:Name="LblHotKeyTitle" Text="全局热键" Style="{StaticResource SettingTitle}"/>
+                                    <TextBlock x:Name="LblHotKeySub" Text="任意界面按 Ctrl+Alt+B 呼出主面板"
+                                               Style="{StaticResource SettingSub}"/>
+                                </StackPanel>
+                                <CheckBox x:Name="HotKeyCheck" Grid.Column="1" Style="{StaticResource ToggleCheck}"
+                                          Checked="HotKeyCheck_Changed" Unchecked="HotKeyCheck_Changed"/>
+                            </Grid>
                         </Border>
                         <Border Style="{StaticResource SettingsCard}">
                             <Grid>

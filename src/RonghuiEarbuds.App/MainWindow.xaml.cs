@@ -24,8 +24,10 @@ public partial class MainWindow : Window
     private readonly Action<bool>? _onAliveChanged;
     private readonly Action<bool>? _onMiniBarToggle;
     private readonly Action<string, string>? _onActiveDeviceName;
+    private readonly Action<bool>? _onHotKeyToggle;
     private readonly DispatcherTimer _aliveTimer;
     private readonly BatteryHistoryStore _history;
+    private readonly UsageStore _usage;
     private bool _lastAlive = true;
     // 型号输入框当前是否显示占位文案（语言切换时替换为新占位符）
     private bool _modelShowingPlaceholder = true;
@@ -49,11 +51,17 @@ public partial class MainWindow : Window
     /// <summary>当前关注设备的系统整机电量（悬浮条兜底显示用）。</summary>
     public int? ActiveSystemBattery => _active?.SystemBattery;
 
-    /// <summary>指定设备的系统整机电量（悬浮条多行兜底显示用）。
-    /// 仅在设备仍活着（连接心跳持续刷新 LastSeen）时返回，断开后旧值过时会误导。</summary>
-    public int? SystemBatteryOf(string mac) =>
-        _devices.TryGetValue(mac, out var d) && IsDeviceAlive(mac)
+    /// <summary>指定设备的系统整机电量（悬浮条多行兜底 / 低电量系统兜底用）。
+    /// 仅在连接心跳仍新鲜（ConnSeen ≤15 秒，连接枚举每 5 秒刷）时才可信：
+    /// 断开后 BTHENUM 属性仍在但值是缓存旧值，IsDeviceAlive 的 60 秒宽限窗口
+    /// 会让悬浮条继续显示过时电量，必须用更紧的连接心跳门控。</summary>
+    public int? SystemBatteryOf(string mac)
+    {
+        if (!_devices.TryGetValue(mac, out var d)) return null;
+        return d.ConnSeen != DateTime.MinValue &&
+               (DateTime.Now - d.ConnSeen).TotalSeconds <= 15
             ? d.SystemBattery : null;
+    }
 
     /// <summary>设备是否存活：LastSeen（广播或连接枚举心跳刷新）60 秒内有更新。
     /// 广播不可靠（连接播放停发、未适配机型从不广播），连接心跳才是存活依据。</summary>
@@ -131,16 +139,20 @@ public partial class MainWindow : Window
 
     public MainWindow(EarbudsWatcher watcher, AppConfig config,
         Action<EarbudsUpdate>? onUpdateApplied = null, Action<bool>? onAliveChanged = null,
-        Action<bool>? onMiniBarToggle = null, Action<string, string>? onActiveDeviceName = null)
+        Action<bool>? onMiniBarToggle = null, Action<string, string>? onActiveDeviceName = null,
+        Action<bool>? onHotKeyToggle = null)
     {
         InitializeComponent();
         _watcher = watcher;
         _config = config;
         _history = new BatteryHistoryStore(config);
+        _usage = new UsageStore();
+        UsageStore.Cleanup();
         _onUpdateApplied = onUpdateApplied;
         _onAliveChanged = onAliveChanged;
         _onMiniBarToggle = onMiniBarToggle;
         _onActiveDeviceName = onActiveDeviceName;
+        _onHotKeyToggle = onHotKeyToggle;
 
         RestorePosition(config);
 
@@ -171,6 +183,9 @@ public partial class MainWindow : Window
         _aliveTimer.Tick += (_, _) =>
         {
             RefreshAliveState();
+            // 在线的设备计入佩戴时长（每秒累加，UsageStore 攒满 60 秒才落盘）
+            foreach (var d in _devices.Values)
+                if (IsDeviceAlive(d.Mac)) _usage.AddSecond(d.Mac);
             // 每 5 秒枚举一次系统连接的音频设备，把未适配格式的耳机补进列表
             if (++_probeTick % 5 == 0) RefreshConnectedAudio();
             // 每 15 秒读一次系统电量（HFP/AVRCP 上报），作广播暂停时的兜底显示
@@ -185,6 +200,8 @@ public partial class MainWindow : Window
         {
             SetRowText(ExportImageItem, "stats.exportImage");
             SetRowText(CopyTextItem, "stats.copyText");
+            SetRowText(ExportWeekItem, "stats.exportWeek");
+            SetRowText(CopyWeekItem, "stats.copyWeek");
         };
 
         Loaded += (_, _) =>
@@ -598,6 +615,10 @@ public partial class MainWindow : Window
         LblQuietSub.Text = L.T("settings.quietSub");
         LblDropTitle.Text = L.T("settings.dropTitle");
         LblDropSub.Text = L.T("settings.dropSub");
+        LblVoiceTitle.Text = L.T("settings.voiceTitle");
+        LblVoiceSub.Text = L.T("settings.voiceSub");
+        LblChargeTitle.Text = L.T("settings.chargeTitle");
+        LblChargeSub.Text = L.T("settings.chargeSub");
         LblSecPopup.Text = L.T("settings.sectionPopup");
         LblPopupTitle.Text = L.T("settings.popupTitle");
         LblPopupSub.Text = L.T("settings.popupSub");
@@ -607,11 +628,17 @@ public partial class MainWindow : Window
         LblSecMini.Text = L.T("settings.sectionMini");
         LblMiniTitle.Text = L.T("settings.miniTitle");
         LblMiniSub.Text = L.T("settings.miniSub");
+        LblMediaTitle.Text = L.T("settings.mediaTitle");
+        LblMediaSub.Text = L.T("settings.mediaSub");
         LblSecGeneral.Text = L.T("settings.sectionGeneral");
         LblAutoStartTitle.Text = L.T("settings.autostartTitle");
         LblAutoStartSub.Text = L.T("settings.autostartSub");
         LblThemeTitle.Text = L.T("settings.themeTitle");
         LblThemeSub.Text = L.T("settings.themeSub");
+        LblAccentTitle.Text = L.T("settings.accentTitle");
+        LblAccentSub.Text = L.T("settings.accentSub");
+        LblHotKeyTitle.Text = L.T("settings.hotkeyTitle");
+        LblHotKeySub.Text = L.F("settings.hotkeySubFmt", "Ctrl+Alt+B");
         LblHistoryTitle.Text = L.T("settings.historyTitle");
         LblHistorySub.Text = L.T("settings.historySub");
         OpenHistoryFolderButton.Content = L.T("settings.openFolder");
@@ -658,6 +685,12 @@ public partial class MainWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e) => HideToTray();
 
     private void HideToTray() => Hide();
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _usage.FlushAll();   // 退出前把不足 1 分钟的佩戴零头落盘
+        base.OnClosed(e);
+    }
 
     private void RebindButton_Click(object sender, RoutedEventArgs e)
     {
@@ -963,6 +996,11 @@ public partial class MainWindow : Window
         CooldownValue.Text = L.F("settings.minutesFmt", (int)CooldownSlider.Value);
         MiniBarCheck.IsChecked = _config.MiniBarEnabled;
         HistoryCheck.IsChecked = _config.HistoryEnabled;
+        VoiceAlertsCheck.IsChecked = _config.VoiceAlerts;
+        ChargeFullCheck.IsChecked = _config.ChargeFullAlert;
+        MediaControlsCheck.IsChecked = _config.MiniBarMediaControls;
+        HotKeyCheck.IsChecked = _config.HotKeyEnabled;
+        ApplyAccentDots();
         RefreshSegmentSelections();
     }
 
@@ -1154,6 +1192,78 @@ public partial class MainWindow : Window
     /// <summary>托盘切换悬浮条后同步设置页开关（不触发事件）。</summary>
     public void SyncMiniBarCheck() => MiniBarCheck.IsChecked = _config.MiniBarEnabled;
 
+    private void VoiceAlertsCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _config.VoiceAlerts = VoiceAlertsCheck.IsChecked == true;
+        _config.Save();
+    }
+
+    private void ChargeFullCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _config.ChargeFullAlert = ChargeFullCheck.IsChecked == true;
+        _config.Save();
+    }
+
+    private void MediaControlsCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _config.MiniBarMediaControls = MediaControlsCheck.IsChecked == true;
+        _config.Save();
+        // 复用悬浮条开关通道让 MiniBar.ApllyEnabled 重读媒体栏配置
+        _onMiniBarToggle?.Invoke(_config.MiniBarEnabled);
+    }
+
+    private void HotKeyCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initialized) return;
+        _config.HotKeyEnabled = HotKeyCheck.IsChecked == true;
+        _config.Save();
+        _onHotKeyToggle?.Invoke(_config.HotKeyEnabled);
+    }
+
+    private static ControlTemplate? _accentDotTpl;
+
+    /// <summary>强调色圆点模板：纯色圆 + 鼠标悬停微降透明度。</summary>
+    private static ControlTemplate AccentDotTemplate() => _accentDotTpl ??= (ControlTemplate)
+        System.Windows.Markup.XamlReader.Parse("""
+            <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                             TargetType="{x:Type Button}">
+              <Ellipse x:Name="Dot" Fill="{TemplateBinding Background}"
+                       Stroke="{TemplateBinding BorderBrush}" StrokeThickness="2.5"/>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Dot" Property="Opacity" Value="0.72"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+            """);
+
+    private void AccentDot_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b || !int.TryParse(b.Tag?.ToString(), out var idx)) return;
+        _config.AccentIndex = idx;
+        _config.Save();
+        ThemeManager.SetAccent(idx);
+        ApplyAccentDots();
+    }
+
+    /// <summary>构建六个强调色圆点：填充预设色，选中项加主题色描边环。</summary>
+    private void ApplyAccentDots()
+    {
+        var dots = new[] { AccentDot0, AccentDot1, AccentDot2, AccentDot3, AccentDot4, AccentDot5 };
+        for (var i = 0; i < dots.Length; i++)
+        {
+            var color = (Color)ColorConverter.ConvertFromString(ThemeManager.AccentPresets[i]);
+            dots[i].Template = AccentDotTemplate();
+            dots[i].Background = new SolidColorBrush(color);
+            dots[i].BorderBrush = new SolidColorBrush(
+                i == _config.AccentIndex ? ThemeManager.GetColor("T.TextPrimary") : Colors.Transparent);
+        }
+    }
+
     // ==================== 电量统计（今日已用 / 预计可用 / 曲线） ====================
 
     private void RefreshStats()
@@ -1173,6 +1283,12 @@ public partial class MainWindow : Window
             : L.F("main.estimateFmt", stats.EstimateText);
         StatsEstimateText.SetResourceReference(TextBlock.ForegroundProperty,
             charging ? "T.Accent" : "T.TextGreen");
+
+        // 佩戴时长（今天已连接的累计分钟）
+        int worn;
+        try { worn = _usage.GetMinutes(st.Mac, DateTime.Now); }
+        catch { worn = 0; }
+        StatsWearText.Text = worn > 0 ? L.F("stats.wearFmt", worn) : "--";
 
         // 曲线：当日有效电量序列映射到 150×34
         if (stats.Curve.Count >= 2)
@@ -1196,6 +1312,39 @@ public partial class MainWindow : Window
 
     // ==================== 电量日报导出（分享用：图片 / 文本） ====================
 
+    /// <summary>语音播报文案：把设备选择名单里的**全部在线设备**挨个报一遍
+    /// （当前关注设备优先），每台带名字，便于多副耳机区分。
+    /// 悬浮条按钮 / 托盘菜单共用。</summary>
+    public string VoiceReportText()
+    {
+        bool Fresh((int Value, DateTime Time, int Suppressed)? s) =>
+            s is { } v && (DateTime.Now - v.Time).TotalSeconds <= ChannelFreshSeconds;
+        string Fmt((int Value, DateTime Time, int Suppressed)? s) =>
+            Fresh(s) ? $"{s.Value.Value}" : L.T("voice.na");
+        string NameOf(DeviceState st) =>
+            st.Name.Length > 0 ? st.Name : L.T("parser.unknown");
+
+        var macs = KnownDeviceList()
+            .Select(k => k.Mac)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (_active is { } active && !macs.Contains(active.Mac))
+            macs.Insert(0, active.Mac);
+        if (macs.Count == 0) return L.T("voice.noDevice");
+
+        var parts = new List<string>();
+        foreach (var mac in macs)
+        {
+            if (!_devices.TryGetValue(mac, out var st) || !IsDeviceAlive(st.Mac)) continue;
+            if (Fresh(st.Left) || Fresh(st.Right) || Fresh(st.Case))
+                parts.Add(L.F("voice.reportFmt", NameOf(st), Fmt(st.Left), Fmt(st.Right), Fmt(st.Case)));
+            else if (st.SystemBattery is { } sv)
+                parts.Add(L.F("voice.sysFmt", NameOf(st), sv));
+        }
+        if (parts.Count == 0) return L.T("voice.noData");
+        return string.Join(L.T("voice.sep"), parts);
+    }
+
     private void StatsShareButton_Click(object sender, RoutedEventArgs e) =>
         StatsSharePopup.IsOpen = true;
 
@@ -1212,38 +1361,62 @@ public partial class MainWindow : Window
         if (_active is not { } st) return;
         try
         {
-            var card = BuildExportCard(st);
-            const double w = 640;
-            card.Measure(new Size(w, double.PositiveInfinity));
-            card.Arrange(new Rect(0, 0, w, card.DesiredSize.Height));
-            card.UpdateLayout();
-            const double scale = 2;   // 2x 超采样，高分屏/系统缩放下导出不糊
-            var rtb = new RenderTargetBitmap(
-                (int)Math.Round(w * scale), (int)Math.Round(card.DesiredSize.Height * scale),
-                96 * scale, 96 * scale, PixelFormats.Pbgra32);
-            rtb.Render(card);
-
-            var dlg = new SaveFileDialog
-            {
-                Filter = "PNG|*.png",
-                Title = L.T("stats.exportImage"),
-                FileName = $"{SafeFileToken(st.Name.Length > 0 ? st.Name : "RonghuiEarbuds")}-" +
-                           $"{L.T("stats.report")}-{DateTime.Now:yyyyMMdd}.png",
-            };
-            if (dlg.ShowDialog(this) == true)
-            {
-                var enc = new PngBitmapEncoder();
-                enc.Frames.Add(BitmapFrame.Create(rtb));
-                using (var fs = File.Create(dlg.FileName))
-                    enc.Save(fs);
+            var fileName = $"{SafeFileToken(st.Name.Length > 0 ? st.Name : "RonghuiEarbuds")}-" +
+                           $"{L.T("stats.report")}-{DateTime.Now:yyyyMMdd}.png";
+            if (TrySaveCard(BuildExportCard(st), L.T("stats.exportImage"), fileName))
                 FlashShareButton();
-            }
         }
         catch (Exception ex)
         {
             MessageDialog.Show(this, L.T("wizard.failTitle"),
                 L.F("wizard.failFmt", ex.Message), DialogKind.Error);
         }
+    }
+
+    private void ExportWeek_Click(object sender, RoutedEventArgs e)
+    {
+        StatsSharePopup.IsOpen = false;
+        if (_active is not { } st) return;
+        try
+        {
+            var fileName = $"{SafeFileToken(st.Name.Length > 0 ? st.Name : "RonghuiEarbuds")}-" +
+                           $"{L.T("stats.weekTitle")}-{DateTime.Now:yyyyMMdd}.png";
+            if (TrySaveCard(BuildExportWeekCard(st), L.T("stats.exportWeek"), fileName))
+                FlashShareButton();
+        }
+        catch (Exception ex)
+        {
+            MessageDialog.Show(this, L.T("wizard.failTitle"),
+                L.F("wizard.failFmt", ex.Message), DialogKind.Error);
+        }
+    }
+
+    /// <summary>离屏卡片渲染为 2x 超采样 PNG 并弹保存框，保存成功返回 true。</summary>
+    private bool TrySaveCard(Border card, string dialogTitle, string defaultFileName)
+    {
+        const double w = 640;
+        card.Measure(new Size(w, double.PositiveInfinity));
+        card.Arrange(new Rect(0, 0, w, card.DesiredSize.Height));
+        card.UpdateLayout();
+        const double scale = 2;   // 2x 超采样，高分屏/系统缩放下导出不糊
+        var rtb = new RenderTargetBitmap(
+            (int)Math.Round(w * scale), (int)Math.Round(card.DesiredSize.Height * scale),
+            96 * scale, 96 * scale, PixelFormats.Pbgra32);
+        rtb.Render(card);
+
+        var dlg = new SaveFileDialog
+        {
+            Filter = "PNG|*.png",
+            Title = dialogTitle,
+            FileName = defaultFileName,
+        };
+        if (dlg.ShowDialog(this) != true) return false;
+
+        var enc = new PngBitmapEncoder();
+        enc.Frames.Add(BitmapFrame.Create(rtb));
+        using (var fs = File.Create(dlg.FileName))
+            enc.Save(fs);
+        return true;
     }
 
     private void CopyText_Click(object sender, RoutedEventArgs e)
@@ -1253,6 +1426,22 @@ public partial class MainWindow : Window
         try
         {
             Clipboard.SetText(BuildExportText(st));
+            FlashShareButton();
+        }
+        catch (Exception ex)
+        {
+            MessageDialog.Show(this, L.T("wizard.failTitle"),
+                L.F("wizard.failFmt", ex.Message), DialogKind.Error);
+        }
+    }
+
+    private void CopyWeek_Click(object sender, RoutedEventArgs e)
+    {
+        StatsSharePopup.IsOpen = false;
+        if (_active is not { } st) return;
+        try
+        {
+            Clipboard.SetText(BuildExportWeekText(st));
             FlashShareButton();
         }
         catch (Exception ex)
@@ -1454,6 +1643,145 @@ public partial class MainWindow : Window
             });
             root.Children.Add(host);
         }
+
+        // 页脚
+        root.Children.Add(new TextBlock
+        {
+            Text = "RonghuiEarbuds · github.com/Furry09shou/ronghui-earbuds",
+            FontSize = 10.5, Margin = new Thickness(0, 16, 0, 0), Foreground = Brush("T.TextDim"),
+        });
+
+        card.Child = root;
+        return card;
+    }
+
+    /// <summary>周报文本：范围 / 设备 / 7 天佩戴分钟 / 汇总。</summary>
+    private string BuildExportWeekText(DeviceState st)
+    {
+        var sb = new StringBuilder();
+        var today = DateTime.Now.Date;
+        sb.Append(L.T("main.title")).Append(" · ").AppendLine(L.T("stats.weekTitle"));
+        sb.AppendLine(L.F("stats.weekRangeFmt", today.AddDays(-6), today));
+        sb.Append(L.T("stats.device")).Append(L.T("stats.colon"))
+          .AppendLine(st.Name.Length > 0 ? st.Name : L.T("main.identifying"));
+
+        var days = _usage.GetRecentDays(st.Mac, 7);
+        foreach (var (day, m) in days)
+            sb.Append($"{day:MM-dd}  ")
+              .AppendLine(m > 0 ? L.F("stats.durMinsFmt", m) : "--");
+
+        int total = days.Sum(d => d.Minutes);
+        var trackDays = Enumerable.Range(0, 7)
+            .Count(i => BatteryHistoryStore.DayHasData(st.Mac, today.AddDays(-i)));
+        if (total > 0)
+        {
+            var dur = total >= 60
+                ? L.F("stats.durHoursFmt", total / 60, total % 60)
+                : L.F("stats.durMinsFmt", total);
+            sb.AppendLine(L.F("stats.weekTotalFmt", dur));
+            sb.AppendLine(L.F("stats.weekDaysFmt", trackDays));
+        }
+        else sb.AppendLine(L.T("stats.weekNoData"));
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>周报图片卡片：标题 / 设备 / 7 天佩戴柱状图 / 汇总行。离屏渲染，
+    /// 颜色全部用 ThemeManager 实色（DynamicResource 在游离元素上不可靠）。</summary>
+    private Border BuildExportWeekCard(DeviceState st)
+    {
+        SolidColorBrush Brush(string key) => new(ThemeManager.GetColor(key));
+
+        var card = new Border
+        {
+            Background = Brush("T.WindowBg"),
+            BorderBrush = Brush("T.CardBorder"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(18),
+            Padding = new Thickness(36, 28, 36, 24),
+            Width = 640,
+        };
+        var root = new StackPanel();
+        var today = DateTime.Now.Date;
+
+        // 标题行：周报 + 日期范围
+        var titleRow = new Grid();
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var titleText = new TextBlock
+        {
+            Text = L.T("stats.weekTitle"), FontSize = 19, FontWeight = FontWeights.SemiBold,
+            Foreground = Brush("T.TextPrimary"), VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        var rangeText = new TextBlock
+        {
+            Text = L.F("stats.weekRangeFmt", today.AddDays(-6), today), FontSize = 12,
+            Foreground = Brush("T.TextDim"), VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        Grid.SetColumn(titleText, 0);
+        Grid.SetColumn(rangeText, 1);
+        titleRow.Children.Add(titleText);
+        titleRow.Children.Add(rangeText);
+        root.Children.Add(titleRow);
+
+        // 设备行
+        root.Children.Add(new TextBlock
+        {
+            Text = L.T("stats.device") + L.T("stats.colon") +
+                   (st.Name.Length > 0 ? st.Name : L.T("main.identifying")),
+            FontSize = 13, Margin = new Thickness(0, 7, 0, 0),
+            Foreground = Brush("T.TextSecondary"),
+        });
+
+        // 7 天佩戴柱状图（柱高 ∝ 分钟/天，上限 240 分钟）
+        var days = _usage.GetRecentDays(st.Mac, 7);
+        const double cw = 566, plotH = 132, maxMin = 240, barW = 26;
+        var chart = new Canvas { Width = cw, Height = plotH + 24, Margin = new Thickness(0, 22, 0, 4) };
+        var accent = ThemeManager.GetColor("T.Accent");
+        var slot = cw / 7.0;
+        for (var i = 0; i < 7; i++)
+        {
+            var (day, m) = days[i];
+            var h = m > 0 ? Math.Max(8, plotH * Math.Min(m, maxMin) / maxMin) : 3;
+            var bar = new Border
+            {
+                Width = barW,
+                Height = h,
+                CornerRadius = new CornerRadius(6, 6, 0, 0),
+                Background = new SolidColorBrush(m > 0 ? accent : ThemeManager.GetColor("T.SubtleBorder")),
+            };
+            Canvas.SetLeft(bar, slot * i + (slot - barW) / 2);
+            Canvas.SetTop(bar, plotH - h);
+            chart.Children.Add(bar);
+
+            var label = new TextBlock
+            {
+                Text = $"{day:MM-dd}", FontSize = 10, Width = slot,
+                TextAlignment = TextAlignment.Center, Foreground = Brush("T.TextDim"),
+            };
+            Canvas.SetLeft(label, slot * i);
+            Canvas.SetTop(label, plotH + 6);
+            chart.Children.Add(label);
+        }
+        root.Children.Add(chart);
+
+        // 汇总行
+        int total = days.Sum(d => d.Minutes);
+        var trackDays = Enumerable.Range(0, 7)
+            .Count(i => BatteryHistoryStore.DayHasData(st.Mac, today.AddDays(-i)));
+        string summary;
+        if (total > 0)
+        {
+            var dur = total >= 60
+                ? L.F("stats.durHoursFmt", total / 60, total % 60)
+                : L.F("stats.durMinsFmt", total);
+            summary = $"{L.F("stats.weekTotalFmt", dur)} · {L.F("stats.weekDaysFmt", trackDays)}";
+        }
+        else summary = L.T("stats.weekNoData");
+        root.Children.Add(new TextBlock
+        {
+            Text = summary, FontSize = 13, Foreground = Brush("T.TextSecondary"),
+            Margin = new Thickness(0, 10, 0, 0),
+        });
 
         // 页脚
         root.Children.Add(new TextBlock

@@ -216,7 +216,7 @@ public partial class InstallerWindow : Window
                 try
                 {
                     Process.Start(new ProcessStartInfo(
-                        "https://dotnet.microsoft.com/zh-cn/download/dotnet/8.0/runtime")
+                        "https://dotnet.microsoft.com/zh-cn/download/dotnet/10.0/runtime")
                     { UseShellExecute = true });
                 }
                 catch { /* 打开浏览器失败忽略 */ }

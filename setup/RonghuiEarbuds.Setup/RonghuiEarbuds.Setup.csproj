@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <!-- WinForms 仅提供 FolderBrowserDialog，禁止其全局 using 污染 WPF 代码 -->
     <UseWindowsForms>true</UseWindowsForms>
@@ -11,7 +11,7 @@
     <AssemblyName>RonghuiEarbuds.Setup</AssemblyName>
     <RootNamespace>RonghuiEarbuds.Setup</RootNamespace>
     <ApplicationIcon>..\..\assets\RonghuiEarbuds.ico</ApplicationIcon>
-    <Version>1.6.1</Version>
+    <Version>1.7.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,7 +24,7 @@
        依赖主程序已先构建（build.cmd 保证顺序）。 -->
   <Target Name="PrepareAppPayload" BeforeTargets="AssignTargetPaths">
     <PropertyGroup>
-      <PayloadSrc>..\..\src\RonghuiEarbuds.App\bin\Release\net8.0-windows10.0.19041.0</PayloadSrc>
+      <PayloadSrc>..\..\src\RonghuiEarbuds.App\bin\Release\net10.0-windows10.0.19041.0</PayloadSrc>
       <PayloadWork>$(IntermediateOutputPath)payload\</PayloadWork>
     </PropertyGroup>
     <ItemGroup>

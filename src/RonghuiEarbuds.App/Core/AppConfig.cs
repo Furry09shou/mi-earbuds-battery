@@ -62,6 +62,23 @@ public sealed class AppConfig
     /// <summary>界面语言：system=跟随系统（默认）/ zh=中文 / en=English。</summary>
     public string Language { get; set; } = "system";
 
+    // ================= v1.7.0 语音 / 充电 / 热键 / 个性 =================
+
+    /// <summary>低电量/骤降提醒时是否同时语音播报（需系统装中文语音）。</summary>
+    public bool VoiceAlerts { get; set; }
+
+    /// <summary>耳机与充电仓充满时弹托盘提醒（每个充电周期一次）。</summary>
+    public bool ChargeFullAlert { get; set; } = true;
+
+    /// <summary>悬浮条底部媒体控制栏（上一曲/播放暂停/下一曲/播报电量）。</summary>
+    public bool MiniBarMediaControls { get; set; } = true;
+
+    /// <summary>全局热键 Ctrl+Alt+B 呼出主面板。</summary>
+    public bool HotKeyEnabled { get; set; } = true;
+
+    /// <summary>强调色索引（0-5，主题配色跟随它）。</summary>
+    public int AccentIndex { get; set; }
+
     private static string Dir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RonghuiEarbuds");
     private static string FilePath => Path.Combine(Dir, "config.json");

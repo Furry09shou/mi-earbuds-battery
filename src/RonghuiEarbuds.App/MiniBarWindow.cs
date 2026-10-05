@@ -76,6 +76,9 @@ public sealed class MiniBarWindow : Window
     /// <summary>App 注入：当前主面板关注设备 MAC（勾选名单为空时显示它）。</summary>
     public Func<string?>? ActiveMacProvider { get; set; }
 
+    /// <summary>App 注入：用户点悬浮条「播报电量」按钮时触发（App 负责组织语句并 TTS）。</summary>
+    public Action? VoiceRequested { get; set; }
+
     public MiniBarWindow(AppConfig config)
     {
         _config = config;
@@ -229,6 +232,8 @@ public sealed class MiniBarWindow : Window
         for (var i = 0; i < list.Count; i++)
             RenderRow(_rows[i], list[i].Mac, list[i].Dev);
 
+        SyncVolume();   // 每秒把系统真实音量同步到滑条（拖拽中除外）
+
         // 高度由 SizeToContent 自动贴合内容，无需手工计算
     }
 
@@ -304,10 +309,11 @@ public sealed class MiniBarWindow : Window
         }
     }
 
-    /// <summary>确保行数匹配（多/少一台时重建行与分隔线）。</summary>
+    /// <summary>确保行数匹配（多/少一台时重建行与分隔线）。媒体栏恒在末尾重建。</summary>
     private void EnsureRows(int count)
     {
-        if (_rows.Count == count) return;
+        // 启动时可能 count==0（尚无设备）：行区无需重建，但媒体栏仍要建出来
+        if (_rows.Count == count && _mediaBar is not null) return;
         _rows.Clear();
         _rowsHost.Children.Clear();
         for (var i = 0; i < count; i++)
@@ -327,6 +333,9 @@ public sealed class MiniBarWindow : Window
             _rows.Add(row);
             _rowsHost.Children.Add(row.Root);
         }
+        _mediaBar = BuildMediaBar();
+        ApplyMediaBar();
+        _rowsHost.Children.Add(_mediaBar);
     }
 
     private BarRow BuildRow()
@@ -439,6 +448,270 @@ public sealed class MiniBarWindow : Window
         };
         row.NameShift.BeginAnimation(TranslateTransform.XProperty, anim);
     }
+
+    // ---------- 媒体控制栏 ----------
+
+    private Border? _mediaBar;
+    private TextBlock? _playGlyph;
+    private TextBlock? _mediaTitle;
+    private bool _playing;
+    private Slider? _volumeSlider;
+    private TextBlock? _muteGlyph;
+    private TextBlock? _volumeValueText;
+    private bool _volumeDragging;   // 用户正拖拽滑条：自刷同步不覆盖
+    private bool _volumeSyncing;    // 程序写入滑条值：避免 ValueChanged 回声写系统
+
+    /// <summary>媒体控制栏开关（设置页切换时由 ApplyEnabled 统一应用）。</summary>
+    private void ApplyMediaBar()
+    {
+        if (_mediaBar is null) return;
+        _mediaBar.Visibility = _config.MiniBarMediaControls ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>同步系统当前播放内容：曲目标题显示 + 播放/暂停图标跟随真实状态。</summary>
+    public void SetMediaInfo(string? title, string? artist, bool playing)
+    {
+        if (_mediaTitle is { } t)
+        {
+            var text = string.IsNullOrWhiteSpace(artist) ? title : $"{artist} — {title}";
+            if (string.IsNullOrWhiteSpace(text))
+                t.Visibility = Visibility.Collapsed;
+            else
+            {
+                t.Text = text;
+                t.Visibility = Visibility.Visible;
+            }
+        }
+        _playing = playing;
+        if (_playGlyph is { } g) g.Text = playing ? "\uE769" : "\uE768";
+    }
+
+    /// <summary>底部控制栏：上一曲 / 播放暂停 / 下一曲 / 语音播报电量，标题列同步系统媒体会话。
+    /// 媒体键全局生效（与当前播放器/耳机无关），播报走 App 注入回调。</summary>
+    private Border BuildMediaBar()
+    {
+        var row = new Grid { Height = 34, Margin = new Thickness(10, 6, 10, 4) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        for (var i = 0; i < 4; i++)
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var title = new TextBlock
+        {
+            FontSize = 10.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(6, 0, 14, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Visibility = Visibility.Collapsed,
+        };
+        title.SetResourceReference(TextBlock.ForegroundProperty, "T.TextDim");
+        _mediaTitle = title;
+        Grid.SetColumn(title, 0);
+        row.Children.Add(title);
+
+        var prev = MakeCtrlButton("\uE892", L.T("mini.prevTip"), MediaKeys.Prev);
+        var play = MakeCtrlButton("\uE768", L.T("mini.playTip"), () =>
+        {
+            MediaKeys.PlayPause();
+            // 先本地翻转给即时反馈，SMTC 回推事件会再校正为真实状态
+            _playing = !_playing;
+            if (_playGlyph is not null)
+                _playGlyph.Text = _playing ? "\uE769" : "\uE768";
+        });
+        _playGlyph = (TextBlock)play.Content;
+        var next = MakeCtrlButton("\uE893", L.T("mini.nextTip"), MediaKeys.Next);
+        var speak = MakeCtrlButton("\uE767", L.T("mini.speakTip"), () => VoiceRequested?.Invoke());
+
+        Grid.SetColumn(prev, 1);
+        Grid.SetColumn(play, 2);
+        Grid.SetColumn(next, 3);
+        Grid.SetColumn(speak, 4);
+        row.Children.Add(prev);
+        row.Children.Add(play);
+        row.Children.Add(next);
+        row.Children.Add(speak);
+
+        var sep = new Border
+        {
+            Height = 1,
+            Margin = new Thickness(14, 0, 14, 0),
+            Opacity = 0.6,
+        };
+        sep.SetResourceReference(Border.BackgroundProperty, "T.CardBorder");
+
+        var wrap = new StackPanel();
+        wrap.Children.Add(sep);
+        wrap.Children.Add(row);
+        wrap.Children.Add(BuildVolumeRow());
+        var bar = new Border { Child = wrap };
+        return bar;
+    }
+
+    /// <summary>媒体栏第二行：静音按钮 + 音量滑条，控制系统默认播放设备主音量（拖拽实时生效）。</summary>
+    private Grid BuildVolumeRow()
+    {
+        var row = new Grid { Height = 28, Margin = new Thickness(10, 0, 10, 6) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var mute = MakeCtrlButton("\uE767", L.T("mini.muteTip"), ToggleMute);
+        _muteGlyph = (TextBlock)mute.Content;
+        Grid.SetColumn(mute, 0);
+        row.Children.Add(mute);
+
+        // 右侧百分比数字：拖拽/自刷时随时更新
+        var valueText = new TextBlock
+        {
+            Text = "--",
+            FontSize = 10,
+            FontWeight = FontWeights.SemiBold,
+            TextAlignment = TextAlignment.Right,
+            MinWidth = 28,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(2, 0, 2, 0),
+        };
+        valueText.SetResourceReference(TextBlock.ForegroundProperty, "T.TextSecondary");
+        _volumeValueText = valueText;
+        Grid.SetColumn(valueText, 2);
+        row.Children.Add(valueText);
+
+        var slider = new Slider
+        {
+            Minimum = 0,
+            Maximum = 100,
+            Value = 50,
+            Height = 18,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0, 0, 0),
+            Cursor = Cursors.Hand,
+            IsMoveToPointEnabled = true,   // 点轨道任意位置直接跳到该音量
+            Template = VolumeSliderTemplate(),
+        };
+        slider.ValueChanged += (_, e) =>
+        {
+            var percent = Math.Round(e.NewValue);
+            slider.ToolTip = $"{percent}%";
+            if (_volumeValueText is { } vt) vt.Text = $"{percent}%";
+            if (_volumeSyncing) return;   // 程序同步回写，不回声到系统
+            VolumeControl.SetScalar((float)(e.NewValue / 100.0));
+        };
+        slider.PreviewMouseDown += (_, _) => _volumeDragging = true;
+        slider.PreviewMouseUp += (_, _) => _volumeDragging = false;
+        slider.LostMouseCapture += (_, _) => _volumeDragging = false;
+        _volumeSlider = slider;
+        Grid.SetColumn(slider, 1);
+        row.Children.Add(slider);
+        return row;
+    }
+
+    /// <summary>切换系统静音并即时更新图标（静音=斜线喇叭 E74F）。</summary>
+    private void ToggleMute()
+    {
+        if (!VolumeControl.TryGetMute(out var muted)) return;
+        VolumeControl.SetMute(!muted);
+        if (_muteGlyph is not null)
+            _muteGlyph.Text = muted ? "\uE767" : "\uE74F";
+    }
+
+    /// <summary>1s 自刷时把系统真实音量/静音状态同步回滑条与图标（默认设备可能被系统音量键改动）。</summary>
+    private void SyncVolume()
+    {
+        if (_mediaBar is null || _mediaBar.Visibility != Visibility.Visible) return;
+        if (_volumeSlider is not null && !_volumeDragging)
+        {
+            _volumeSyncing = true;
+            if (VolumeControl.TryGetScalar(out var scalar))
+                _volumeSlider.Value = Math.Round(scalar * 100);
+            _volumeSyncing = false;
+        }
+        if (_muteGlyph is not null && VolumeControl.TryGetMute(out var muted))
+            _muteGlyph.Text = muted ? "\uE74F" : "\uE767";
+    }
+
+    private static ControlTemplate? _volSliderTpl;
+
+    private static ControlTemplate VolumeSliderTemplate() => _volSliderTpl ??= (ControlTemplate)
+        System.Windows.Markup.XamlReader.Parse("""
+            <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                             TargetType="{x:Type Slider}">
+              <Grid Height="18" Background="Transparent">
+                <Track x:Name="PART_Track" VerticalAlignment="Center">
+                  <Track.DecreaseRepeatButton>
+                    <RepeatButton Command="{x:Static Slider.DecreaseLarge}" IsTabStop="False" Focusable="False" Height="4">
+                      <RepeatButton.Template>
+                        <ControlTemplate TargetType="{x:Type RepeatButton}">
+                          <Border Background="{DynamicResource T.Accent}" CornerRadius="2"/>
+                        </ControlTemplate>
+                      </RepeatButton.Template>
+                    </RepeatButton>
+                  </Track.DecreaseRepeatButton>
+                  <Track.IncreaseRepeatButton>
+                    <RepeatButton Command="{x:Static Slider.IncreaseLarge}" IsTabStop="False" Focusable="False" Height="4">
+                      <RepeatButton.Template>
+                        <ControlTemplate TargetType="{x:Type RepeatButton}">
+                          <Border Background="{DynamicResource T.CardBorder}" CornerRadius="2" Opacity="0.9"/>
+                        </ControlTemplate>
+                      </RepeatButton.Template>
+                    </RepeatButton>
+                  </Track.IncreaseRepeatButton>
+                  <Track.Thumb>
+                    <Thumb Width="12" Height="12" Focusable="False">
+                      <Thumb.Template>
+                        <ControlTemplate TargetType="{x:Type Thumb}">
+                          <Ellipse Fill="{DynamicResource T.Accent}"/>
+                        </ControlTemplate>
+                      </Thumb.Template>
+                    </Thumb>
+                  </Track.Thumb>
+                </Track>
+              </Grid>
+            </ControlTemplate>
+            """);
+
+    private static Button MakeCtrlButton(string glyph, string tip, Action action)
+    {
+        var ico = new TextBlock
+        {
+            Text = glyph,
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 13,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var btn = new Button
+        {
+            Width = 30,
+            Height = 26,
+            Margin = new Thickness(1, 0, 1, 0),
+            Cursor = Cursors.Hand,
+            ToolTip = tip,
+            Content = ico,
+            Template = CtrlButtonTemplate(),
+        };
+        ico.SetResourceReference(TextBlock.ForegroundProperty, "T.TextSecondary");
+        btn.Click += (_, _) => action();
+        return btn;
+    }
+
+    private static ControlTemplate? _ctrlBtnTpl;
+
+    private static ControlTemplate CtrlButtonTemplate() => _ctrlBtnTpl ??= (ControlTemplate)
+        System.Windows.Markup.XamlReader.Parse("""
+            <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                             TargetType="{x:Type Button}">
+              <Border x:Name="Row" CornerRadius="7" Background="Transparent">
+                <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Row" Property="Background" Value="#1426262D"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+            """);
 
     // ---------- 设备选择浮层 ----------
 
@@ -567,6 +840,7 @@ public sealed class MiniBarWindow : Window
         {
             RestorePosition();
             Render();
+            ApplyMediaBar();
             Show();
             _freshTimer.Start();
         }
