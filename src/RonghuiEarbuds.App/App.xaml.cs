@@ -57,6 +57,7 @@ public partial class App : Application
         {
             OpenMainRequested = () => ShowMainWindow(),
             SystemBatteryProvider = mac => _window?.SystemBatteryOf(mac),
+            AliveProvider = mac => _window?.IsDeviceAlive(mac) ?? false,
             DeviceListProvider = () => _window?.KnownDeviceList() ?? Array.Empty<(string, string)>(),
             ActiveMacProvider = () => _window?.ActiveMac,
         };

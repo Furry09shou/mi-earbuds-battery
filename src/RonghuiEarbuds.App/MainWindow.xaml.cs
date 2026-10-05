@@ -48,9 +48,15 @@ public partial class MainWindow : Window
     /// <summary>指定设备的系统整机电量（悬浮条多行兜底显示用）。
     /// 仅在设备仍活着（连接心跳持续刷新 LastSeen）时返回，断开后旧值过时会误导。</summary>
     public int? SystemBatteryOf(string mac) =>
-        _devices.TryGetValue(mac, out var d) &&
-        (DateTime.Now - d.LastSeen).TotalSeconds <= 60
+        _devices.TryGetValue(mac, out var d) && IsDeviceAlive(mac)
             ? d.SystemBattery : null;
+
+    /// <summary>设备是否存活：LastSeen（广播或连接枚举心跳刷新）60 秒内有更新。
+    /// 广播不可靠（连接播放停发、未适配机型从不广播），连接心跳才是存活依据。</summary>
+    public bool IsDeviceAlive(string mac) =>
+        _devices.TryGetValue(mac, out var st) &&
+        st.LastSeen != DateTime.MinValue &&
+        (DateTime.Now - st.LastSeen).TotalSeconds <= 60;
 
     /// <summary>悬浮条右键菜单用：值得列出的设备（已持久化名单 + 近期见过的设备）。</summary>
     public IReadOnlyList<(string Name, string Mac)> KnownDeviceList() =>

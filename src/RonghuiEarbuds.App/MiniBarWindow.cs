@@ -66,6 +66,9 @@ public sealed class MiniBarWindow : Window
     /// <summary>App 注入：按 MAC 取该设备的系统整机电量（广播停发/未适配时的兜底显示）。</summary>
     public Func<string, int?>? SystemBatteryProvider { get; set; }
 
+    /// <summary>App 注入：设备是否存活（连接心跳信号），决定行灰显与名字颜色。</summary>
+    public Func<string, bool>? AliveProvider { get; set; }
+
     /// <summary>App 注入：右键菜单设备名单（名字, MAC）。</summary>
     public Func<IReadOnlyList<(string Name, string Mac)>>? DeviceListProvider { get; set; }
 
@@ -228,15 +231,13 @@ public sealed class MiniBarWindow : Window
             Dispatcher.BeginInvoke(() => UpdateMarquee(row), DispatcherPriority.Loaded);
         }
 
-        // 行级灰显：曾有广播但停了（断连/连接播放停发）。从未广播的设备（靠系统
-        // 心跳存活的未适配机型）不灰显，否则会长期半透明
-        bool everBroadcast = dev.BroadcastSeen != DateTime.MinValue;
-        bool offline = everBroadcast &&
-                       (DateTime.Now - dev.BroadcastSeen).TotalSeconds > StaleSeconds;
-        row.Root.Opacity = offline ? 0.75 : 1.0;
+        // 行级存活：连接心跳信号（AliveProvider），而非广播——广播不可靠
+        //（连接播放停发、未适配机型从不广播，但设备都活着）
+        bool alive = AliveProvider?.Invoke(mac) ?? true;
+        row.Root.Opacity = alive ? 1.0 : 0.75;
         // 名字颜色跟随状态：在线主文字色，离线才灰显（之前固定灰色，状态分不清）
         row.NameText.SetResourceReference(TextBlock.ForegroundProperty,
-            offline ? "T.TextDim" : "T.TextPrimary");
+            alive ? "T.TextPrimary" : "T.TextDim");
 
         // 三格是否有新鲜分耳数据；没有时若系统整机电量可得 → 单格兜底模式
         bool anyFresh = false;
