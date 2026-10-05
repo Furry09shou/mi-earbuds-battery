@@ -547,6 +547,11 @@ public partial class MainWindow : Window
         OpenHistoryFolderButton.Content = L.T("settings.openFolder");
         LblLangTitle.Text = L.T("lang.title");
         LblLangSub.Text = L.T("lang.sub");
+        LblAboutTitle.Text = L.T("settings.aboutTitle");
+        var ver = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
+        LblAboutSub.Text = L.F("settings.aboutSub", ver is null ? "?" : ver.ToString(3));
+        LblAboutGithub.Text = L.T("settings.aboutGithub");
+        LblAboutQq.Text = L.T("settings.aboutQq");
         LblHistoryNote.Text = L.T("settings.historyNote");
         SettingsBackButton.Content = L.T("settings.back");
         RefreshSegmentSelections();
@@ -954,7 +959,31 @@ public partial class MainWindow : Window
         var lang = ((Button)sender).Tag?.ToString() ?? "system";
         _config.Language = lang;
         _config.Save();
-        L.SetLanguage(lang);   // 触发 L.Changed → 各界面 ApplyLanguage
+        L.SetLanguage(lang);          // 触发 L.Changed → 各界面 ApplyLanguage
+        RefreshSegmentSelections();   // 同语言时 Changed 不触发，也要让高亮移动给出反馈
+    }
+
+    private const string GitHubUrl = "https://github.com/Furry09shou/ronghui-earbuds";
+    private readonly DispatcherTimer _qqResetTimer = new() { Interval = TimeSpan.FromSeconds(1.2) };
+
+    private void GithubButton_Click(object sender, RoutedEventArgs e) =>
+        Process.Start(new ProcessStartInfo { FileName = GitHubUrl, UseShellExecute = true });
+
+    // 点 QQ 号复制到剪贴板，短暂显示「已复制」后还原
+    private void QqButton_Click(object sender, RoutedEventArgs e)
+    {
+        try { Clipboard.SetText("1769711677"); } catch { /* 剪贴板被占用时忽略 */ }
+        LblAboutQq.Text = L.T("settings.copied");
+        _qqResetTimer.Stop();
+        _qqResetTimer.Tick -= QqResetTimer_Tick;
+        _qqResetTimer.Tick += QqResetTimer_Tick;
+        _qqResetTimer.Start();
+    }
+
+    private void QqResetTimer_Tick(object? sender, EventArgs e)
+    {
+        _qqResetTimer.Stop();
+        LblAboutQq.Text = L.T("settings.aboutQq");
     }
 
     /// <summary>刷新外观与语言分段按钮的选中态与文案。</summary>

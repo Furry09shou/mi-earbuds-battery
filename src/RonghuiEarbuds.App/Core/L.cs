@@ -86,6 +86,13 @@ public static class L
         ["switch.current"] = ("当前", "Current"),
         ["switch.unsupported"] = ("不支持", "Unsupported"),
 
+        // ================= 关于 =================
+        ["settings.aboutTitle"] = ("关于", "About"),
+        ["settings.aboutSub"] = ("绒汇耳机助手 v{0}", "Ronghui Earbuds v{0}"),
+        ["settings.aboutGithub"] = ("GitHub 项目地址", "GitHub project"),
+        ["settings.aboutQq"] = ("作者 QQ：1769711677", "Author QQ: 1769711677"),
+        ["settings.copied"] = ("已复制", "Copied"),
+
         // ================= 设置页 =================
         ["settings.sectionAlerts"] = ("提醒", "Alerts"),
         ["settings.lowThresholdTitle"] = ("低电量提醒阈值", "Alert threshold"),

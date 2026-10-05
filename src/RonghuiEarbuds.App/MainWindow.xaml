@@ -582,6 +582,31 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
+                        <Border Style="{StaticResource SettingsCard}">
+                            <StackPanel>
+                                <TextBlock x:Name="LblAboutTitle" Text="关于" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock x:Name="LblAboutSub" Style="{StaticResource SettingSub}" Text=""/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Style="{StaticResource GhostButton}" Cursor="Hand" Click="GithubButton_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="LblAboutGithub" Margin="6,0,0,0"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource GhostButton}" Cursor="Hand" Margin="8,0,0,0"
+                                            Click="QqButton_Click" x:Name="QqButton">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE77B;" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="LblAboutQq" Margin="6,0,0,0"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                         <TextBlock x:Name="LblHistoryNote" TextWrapping="Wrap" FontSize="10" Margin="2,2,0,10"
                                    Foreground="{DynamicResource T.TextDim}"
                                    Text="电量历史仅保存在本机 %APPDATA%\RonghuiEarbuds\history（保留 7 天），用于「今日已用」「预计可用」与当日曲线，不上传任何数据。"/>
