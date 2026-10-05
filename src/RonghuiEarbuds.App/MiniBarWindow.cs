@@ -49,8 +49,8 @@ public sealed class MiniBarWindow : Window
     {
         _config = config;
 
-        Width = 240;
-        Height = 44;
+        Width = 292;   // 视觉条 240×44 + 四周留白，给阴影呼吸空间（否则阴影被窗口边界
+        Height = 92;   // 硬裁成直角边，圆角条像贴图）
         WindowStartupLocation = WindowStartupLocation.Manual;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -76,7 +76,10 @@ public sealed class MiniBarWindow : Window
         {
             BlurRadius = 16, ShadowDepth = 2, Opacity = 0.4, Direction = 270,
         };
-        Content = root;
+        // 外层透明容器：定位阴影留白 + 透明区域也可拖动
+        var outer = new Grid { Background = Brushes.Transparent, Margin = new Thickness(26, 20, 26, 28) };
+        outer.Children.Add(root);
+        Content = outer;
 
         MouseLeftButtonDown += (_, e) =>
         {

@@ -138,41 +138,50 @@ public sealed class BatteryHistoryStore
             var st = StreamFor(mac, DateTime.Now);
             var samples = st.Samples;
 
-            // 有效电量：优先双耳较小值，其次单耳，最后系统整机电量
-            int? Effective(HistorySample s) =>
-                s.Left is { } l && s.Right is { } r ? Math.Min(l, r)
-                : s.Left ?? s.Right ?? s.System;
+            // 有效电量序列：广播分耳值左耳优先、缺了用右耳（双耳物理上同步耗电，
+            // 单耳序列即可代表整副）；系统整机电量只画曲线，绝不参与累计/斜率——
+            // 左右/系统三源混算时，来源切换的差值会被当成"耗电"反复累计（曾出现已用 140%）
+            (int? V, char Src) Eff(HistorySample s)
+            {
+                if (s.Left is { } l) return (l, 'L');
+                if (s.Right is { } r) return (r, 'R');
+                return (s.System, 'S');
+            }
 
-            // 累计耗电：相邻样本的下降量求和（充电回升不计负数）
+            // 累计耗电：相邻样本的下降量求和（充电回升不计负数）；
+            // 来源切换（左↔右）时重置基准不累计，避免通道差被计入
             double used = 0;
-            int? prev = null;
+            (int V, char Src)? prev = null;
             var pts = new List<(double X, double Y)>();
 
             foreach (var s in samples)
             {
-                var v = Effective(s);
+                var (v, src) = Eff(s);
                 if (v is null) continue;
-                if (prev is { } p && v.Value < p) used += p - v.Value;
-                prev = v.Value;
+                if (prev is { } p && p.Src == src && v.Value < p.V)
+                    used += p.V - v.Value;
+                prev = (v.Value, src);
             }
 
             // 曲线点：归一化到 0-100 空间（X=当日进度，Y=电量），过滤过密点
             foreach (var s in samples)
             {
-                var v = Effective(s);
+                var (v, _) = Eff(s);
                 if (v is null) continue;
                 double x = Math.Clamp((s.Time - st.Day.Date).TotalSeconds / 864.0, 0, 100);
                 if (pts.Count == 0 || x - pts[^1].X >= 0.35 || v.Value != (int)pts[^1].Y)
                     pts.Add((x, Math.Clamp(v.Value, 0, 100)));
             }
 
-            // 放电速率：最近 45 分钟内的下降斜率 → 预计可用时长
+            // 放电速率：最近 45 分钟内的分耳下降斜率 → 预计可用时长
+            //（系统值 10 分钟心跳太稀疏，斜率不可信，排除）
             string estimate = "--";
             var now = DateTime.Now;
             var recent = samples
                 .Where(s => (now - s.Time).TotalMinutes <= 45)
-                .Select(s => (s.Time, V: Effective(s)))
-                .Where(s => s.V is not null)
+                .Select(s => (s.Time, Eff(s)))
+                .Where(t => t.Item2.Src != 'S' && t.Item2.V is { })
+                .Select(t => (t.Time, V: (int)t.Item2.V!))
                 .ToList();
             bool charging = samples.Count > 0 && samples[^1].AnyInCase;
 
@@ -183,8 +192,8 @@ public sealed class BatteryHistoryStore
             else if (recent.Count >= 2)
             {
                 var first = recent[0];
-                var lastV = recent[^1].V!.Value;
-                var delta = first.V!.Value - lastV;
+                var lastV = recent[^1].V;
+                var delta = first.V - lastV;
                 var hours = (recent[^1].Time - first.Time).TotalHours;
                 if (delta >= 2 && hours > 0.05)
                 {
