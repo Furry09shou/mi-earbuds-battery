@@ -234,6 +234,9 @@ public sealed class MiniBarWindow : Window
         bool offline = everBroadcast &&
                        (DateTime.Now - dev.BroadcastSeen).TotalSeconds > StaleSeconds;
         row.Root.Opacity = offline ? 0.75 : 1.0;
+        // 名字颜色跟随状态：在线主文字色，离线才灰显（之前固定灰色，状态分不清）
+        row.NameText.SetResourceReference(TextBlock.ForegroundProperty,
+            offline ? "T.TextDim" : "T.TextPrimary");
 
         // 三格是否有新鲜分耳数据；没有时若系统整机电量可得 → 单格兜底模式
         bool anyFresh = false;
