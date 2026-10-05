@@ -10,30 +10,47 @@ using RonghuiEarbuds.App.Core;
 namespace RonghuiEarbuds.App;
 
 /// <summary>
-/// 悬浮迷你电量条：可拖动的极简置顶小条，显示关注设备的左右耳与充电仓电量。
-/// 数据过期自动回「--」，断连整体灰显；双击打开主面板，位置随拖动持久化。
+/// 悬浮迷你电量条：可拖动的极简置顶小条。默认只显示关注设备一行；
+/// 右键菜单勾选多台设备后纵向展开为多行（每台一行：名字 + 三格电量或整机兜底）。
+/// 数据过期自动回「--」，断连行灰显；双击打开主面板，位置与勾选名单均持久化。
 /// </summary>
 public sealed class MiniBarWindow : Window
 {
     private const double FreshSeconds = 3;
     private const double StaleSeconds = 8;
+    private const double RowHeight = 44;
+    private const double RowGap = 8;
 
     private readonly AppConfig _config;
-    private readonly TextBlock _nameText = new() { FontSize = 10.5, FontWeight = FontWeights.SemiBold };
-    private readonly Canvas _nameCanvas = new();   // Canvas 用无限约束测量，保证拿到完整文字宽度
-    private readonly Grid _nameHost = new() { ClipToBounds = true };
-    private readonly TranslateTransform _nameShift = new();
-    private string _lastName = "";
-    private readonly (TextBlock Value, Ellipse Dot, Path Bolt)[] _cells = new (TextBlock, Ellipse, Path)[3];
-    private readonly StackPanel?[] _panels = new StackPanel[3];   // 值格容器（系统电量单格模式时隐藏其余）
+    private readonly StackPanel _rowsHost = new();
+    private readonly List<BarRow> _rows = new();
+    private readonly Dictionary<string, BarDevice> _devices = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _freshTimer = new() { Interval = TimeSpan.FromSeconds(1) };
-
-    private int?[] _lastValues = new int?[3];
-    private bool[] _inCase = new bool[3];
-    private DateTime[] _lastTimes = { DateTime.MinValue, DateTime.MinValue, DateTime.MinValue };
-    private DateTime _broadcastSeen = DateTime.MinValue;
     private bool _themeHooked;
-    private readonly TextBlock[] _labels = new TextBlock[3];
+
+    /// <summary>单台设备的观测数据（广播喂入 + 系统电量兜底）。</summary>
+    private sealed class BarDevice
+    {
+        public string Name = "";
+        public int?[] Values = new int?[3];
+        public bool[] InCase = new bool[3];
+        public readonly DateTime[] Times = { DateTime.MinValue, DateTime.MinValue, DateTime.MinValue };
+        public DateTime BroadcastSeen = DateTime.MinValue;
+    }
+
+    /// <summary>一行 UI（对应一台勾选显示的设备）。</summary>
+    private sealed class BarRow
+    {
+        public Grid Root = null!;
+        public TextBlock NameText = null!;
+        public Canvas NameCanvas = null!;
+        public Grid NameHost = null!;
+        public TranslateTransform NameShift = null!;
+        public string LastName = "";
+        public readonly (TextBlock Value, Ellipse Dot, Path Bolt)[] Cells = new (TextBlock, Ellipse, Path)[3];
+        public readonly StackPanel?[] Panels = new StackPanel[3];
+        public readonly TextBlock[] Labels = new TextBlock[3];
+    }
 
     /// <summary>悬浮条三列小标签：L / R / 仓（仓随语言切换）。</summary>
     private static string MiniLabel(int i) => i switch
@@ -46,20 +63,21 @@ public sealed class MiniBarWindow : Window
     /// <summary>App 注入：双击迷你条时显示主窗口。</summary>
     public Action? OpenMainRequested { get; set; }
 
-    /// <summary>App 注入：当前关注设备的系统整机电量（广播停发/未适配时的兜底显示）。</summary>
-    public Func<int?>? SystemBatteryProvider { get; set; }
+    /// <summary>App 注入：按 MAC 取该设备的系统整机电量（广播停发/未适配时的兜底显示）。</summary>
+    public Func<string, int?>? SystemBatteryProvider { get; set; }
 
-    /// <summary>App 注入：右键菜单设备名单（名字, MAC）与当前关注 MAC，点击切换关注设备。</summary>
+    /// <summary>App 注入：右键菜单设备名单（名字, MAC）。</summary>
     public Func<IReadOnlyList<(string Name, string Mac)>>? DeviceListProvider { get; set; }
+
+    /// <summary>App 注入：当前主面板关注设备 MAC（勾选名单为空时显示它）。</summary>
     public Func<string?>? ActiveMacProvider { get; set; }
-    public Action<string>? DeviceSwitchRequested { get; set; }
 
     public MiniBarWindow(AppConfig config)
     {
         _config = config;
 
-        Width = 324;   // 视觉条 272×44 + 四周留白，给阴影呼吸空间（否则阴影被窗口边界
-        Height = 92;   // 硬裁成直角边，圆角条像贴图）；272 宽保证名字列不被值区饿死
+        Width = 324;   // 视觉条 272 宽 + 四周留白给阴影呼吸空间（否则阴影被窗口边界硬裁
+        Height = 92;   // 成直角边像贴图）；高度随勾选行数在 Render 时调整
         WindowStartupLocation = WindowStartupLocation.Manual;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -77,7 +95,7 @@ public sealed class MiniBarWindow : Window
             CornerRadius = new CornerRadius(22),
             BorderThickness = new Thickness(1),
             Cursor = Cursors.SizeAll,
-            Child = BuildContent(),
+            Child = _rowsHost,
         };
         root.SetResourceReference(Border.BackgroundProperty, "T.WindowBg");
         root.SetResourceReference(Border.BorderBrushProperty, "T.CardBorder");
@@ -85,6 +103,8 @@ public sealed class MiniBarWindow : Window
         {
             BlurRadius = 16, ShadowDepth = 2, Opacity = 0.4, Direction = 270,
         };
+        _rowsHost.Margin = new Thickness(0, 2, 0, 2);
+
         // 外层透明容器：定位阴影留白 + 透明区域也可拖动
         var outer = new Grid { Background = Brushes.Transparent, Margin = new Thickness(26, 20, 26, 28) };
         outer.Children.Add(root);
@@ -100,28 +120,221 @@ public sealed class MiniBarWindow : Window
             try { DragMove(); } catch { /* 快速点击可能抛异常 */ }
             PersistPosition();
         };
-        MouseRightButtonUp += (_, _) => OpenDeviceMenu();   // 右键：切换显示的设备
+        MouseRightButtonUp += (_, _) => OpenDeviceMenu();   // 右键：勾选展开显示的设备
 
+        ThemeManager.ThemeChanged += () => Dispatcher.Invoke(Render);   // 换肤重刷硬刷的颜色
         _freshTimer.Tick += (_, _) => Render();
     }
 
-    private UIElement BuildContent()
+    // ---------- 数据 ----------
+
+    /// <summary>接收任意已解析设备的广播数据（App 全量转发）。</summary>
+    public void Push(EarbudsUpdate u)
     {
-        var grid = new Grid { Margin = new Thickness(12, 0, 12, 0) };
+        var dev = GetOrAdd(u.Mac);
+        if (dev.Name.Length == 0)
+            dev.Name = string.IsNullOrWhiteSpace(u.DisplayName) ? L.T("mini.earbuds") : u.DisplayName!;
+        dev.BroadcastSeen = u.Timestamp;
+        var s = u.Snapshot;
+        dev.Values[0] = s.LeftPercent;
+        dev.Values[1] = s.RightPercent;
+        dev.Values[2] = s.CasePercent;
+        if (s.LeftPercent is not null) dev.InCase[0] = s.LeftInCase;
+        if (s.RightPercent is not null) dev.InCase[1] = s.RightInCase;   // 仓无「在仓」概念，InCase[2] 恒 false
+        dev.Times[0] = dev.Times[1] = dev.Times[2] = u.Timestamp;
+    }
+
+    /// <summary>连接枚举解析出设备名时补投（不必等广播）。</summary>
+    public void SetDeviceName(string mac, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var dev = GetOrAdd(mac);
+        if (dev.Name != name)
+            dev.Name = name;
+    }
+
+    private BarDevice GetOrAdd(string mac)
+    {
+        if (!_devices.TryGetValue(mac, out var dev))
+            _devices[mac] = dev = new BarDevice();
+        return dev;
+    }
+
+    /// <summary>
+    /// 当前应显示的设备序列：勾选名单 ∩ 已知设备（按名单顺序）；
+    /// 勾选为空时回退到主面板关注设备，再不行就第一台已知设备。
+    /// </summary>
+    private List<(string Mac, BarDevice Dev)> VisibleDevices()
+    {
+        var pinned = new HashSet<string>(_config.MiniBarPinned, StringComparer.OrdinalIgnoreCase);
+        var result = new List<(string, BarDevice)>();
+        if (DeviceListProvider is { } provider)
+        {
+            foreach (var (name, mac) in provider.Invoke())
+            {
+                // 名单接口给出的设备直接信任（占位行显示 --/系统值，广播到达自动填充）；
+                // 若还要求"观测过才显示"，启动时没广播的设备永远进不了悬浮条
+                if (!pinned.Contains(mac)) continue;
+                var dev = GetOrAdd(mac);
+                if (dev.Name.Length == 0) dev.Name = name;
+                result.Add((mac, dev));
+            }
+        }
+        // 勾选了但名单接口还没给出的（少见）：只要有观测数据也显示
+        foreach (var mac in _config.MiniBarPinned)
+        {
+            if (!result.Any(r => r.Item1.Equals(mac, StringComparison.OrdinalIgnoreCase)) &&
+                _devices.TryGetValue(mac, out var dev2))
+                result.Add((mac, dev2));
+        }
+        if (result.Count == 0)
+        {
+            var active = ActiveMacProvider?.Invoke();
+            if (active is { } am && _devices.TryGetValue(am, out var dev3))
+                result.Add((am, dev3));
+            else if (_devices.Count > 0)
+            {
+                var first = _devices.First();
+                result.Add((first.Key, first.Value));
+            }
+        }
+        return result;
+    }
+
+    // ---------- 渲染 ----------
+
+    private void Render()
+    {
+        var list = VisibleDevices();
+        EnsureRows(list.Count);
+
+        for (var i = 0; i < list.Count; i++)
+            RenderRow(_rows[i], list[i].Mac, list[i].Dev);
+
+        // 行数变化 → 调整窗口高度（宽度固定）
+        double h = 48 + list.Count * RowHeight + Math.Max(0, list.Count - 1) * RowGap;
+        if (Math.Abs(Height - h) > 0.5)
+            Height = h;
+    }
+
+    private void RenderRow(BarRow row, string mac, BarDevice dev)
+    {
+        // 名字
+        var name = dev.Name.Length > 0 ? dev.Name : L.T("mini.earbuds");
+        if (name != row.LastName)
+        {
+            row.LastName = name;
+            row.NameText.Text = name;
+            Dispatcher.BeginInvoke(() => UpdateMarquee(row), DispatcherPriority.Loaded);
+        }
+
+        // 行级灰显：该设备广播长期无数据（断连/停发但系统值也没有）
+        bool offline = dev.BroadcastSeen == DateTime.MinValue ||
+                       (DateTime.Now - dev.BroadcastSeen).TotalSeconds > StaleSeconds;
+        row.Root.Opacity = offline ? 0.75 : 1.0;
+
+        // 三格是否有新鲜分耳数据；没有时若系统整机电量可得 → 单格兜底模式
+        bool anyFresh = false;
+        for (var i = 0; i < 3; i++)
+        {
+            if (dev.Values[i] is not null &&
+                (DateTime.Now - dev.Times[i]).TotalSeconds <= FreshSeconds)
+                anyFresh = true;
+        }
+        int? sys = anyFresh ? null : SystemBatteryProvider?.Invoke(mac);
+
+        for (var i = 0; i < 3; i++)
+        {
+            var (value, dot, bolt) = row.Cells[i];
+            var panel = row.Panels[i];
+            bool fresh = anyFresh && dev.Values[i] is not null &&
+                         (DateTime.Now - dev.Times[i]).TotalSeconds <= FreshSeconds;
+
+            if (sys is { } sv && i == 0)
+            {
+                // 系统整机电量单格：标签切「整机」，隐藏闪电（系统值无在仓概念）
+                panel!.Visibility = Visibility.Visible;
+                value.Text = $"{sv}%";
+                value.SetResourceReference(TextBlock.ForegroundProperty, "T.TextPrimary");
+                dot.Fill = new SolidColorBrush(ThemeManager.ColorFor(sv));
+                bolt.Visibility = Visibility.Collapsed;
+                row.Labels[0].Text = L.T("mini.all");
+            }
+            else if (sys is { })
+            {
+                panel!.Visibility = Visibility.Collapsed;   // 单格模式隐藏其余两格
+            }
+            else if (fresh)
+            {
+                int v = dev.Values[i]!.Value;
+                panel!.Visibility = Visibility.Visible;
+                value.Text = $"{v}%";
+                value.SetResourceReference(TextBlock.ForegroundProperty, "T.TextPrimary");
+                dot.Fill = new SolidColorBrush(ThemeManager.ColorFor(v));
+                bolt.Visibility = dev.InCase[i] ? Visibility.Visible : Visibility.Collapsed;
+                row.Labels[i].Text = MiniLabel(i);
+            }
+            else
+            {
+                panel!.Visibility = Visibility.Visible;
+                value.Text = "--";
+                value.SetResourceReference(TextBlock.ForegroundProperty, "T.TextDim");
+                dot.Fill = new SolidColorBrush(ThemeManager.GetColor("T.Unknown"));
+                bolt.Visibility = Visibility.Collapsed;
+                row.Labels[i].Text = MiniLabel(i);
+            }
+        }
+    }
+
+    /// <summary>确保行数匹配（多/少一台时重建行与分隔线）。</summary>
+    private void EnsureRows(int count)
+    {
+        if (_rows.Count == count) return;
+        _rows.Clear();
+        _rowsHost.Children.Clear();
+        for (var i = 0; i < count; i++)
+        {
+            if (i > 0)
+            {
+                var sep = new Border
+                {
+                    Height = 1,
+                    Margin = new Thickness(14, 0, 14, 0),
+                    Opacity = 0.6,
+                };
+                sep.SetResourceReference(Border.BackgroundProperty, "T.CardBorder");
+                _rowsHost.Children.Add(sep);
+            }
+            var row = BuildRow();
+            _rows.Add(row);
+            _rowsHost.Children.Add(row.Root);
+        }
+    }
+
+    private BarRow BuildRow()
+    {
+        var row = new BarRow();
+        var grid = new Grid { Margin = new Thickness(12, 0, 12, 0), Height = RowHeight };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         for (var i = 0; i < 3; i++)
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        _nameText.SetResourceReference(TextBlock.ForegroundProperty, "T.TextSecondary");
-        _nameText.RenderTransform = _nameShift;
-        _nameCanvas.Height = 14;                       // 贴合文字行高：行高偏大时文字顶部对齐会
-        _nameCanvas.Children.Add(_nameText);           // 整体偏上，与右侧电量值不在一条水平线
-        _nameHost.Children.Add(_nameCanvas);
-        _nameHost.MinHeight = 14;
-        _nameHost.VerticalAlignment = VerticalAlignment.Center;
-        _nameHost.SizeChanged += (_, _) => UpdateMarquee();
-        Grid.SetColumn(_nameHost, 0);
-        grid.Children.Add(_nameHost);
+        var nameText = new TextBlock { FontSize = 10.5, FontWeight = FontWeights.SemiBold };
+        nameText.SetResourceReference(TextBlock.ForegroundProperty, "T.TextSecondary");
+        var nameShift = new TranslateTransform();
+        nameText.RenderTransform = nameShift;
+        var nameCanvas = new Canvas { Height = 14 };   // 贴合文字行高，避免文字偏上不对齐
+        nameCanvas.Children.Add(nameText);
+        var nameHost = new Grid { ClipToBounds = true, MinHeight = 14, VerticalAlignment = VerticalAlignment.Center };
+        nameHost.Children.Add(nameCanvas);
+        nameHost.SizeChanged += (_, _) => UpdateMarquee(row);
+        Grid.SetColumn(nameHost, 0);
+        grid.Children.Add(nameHost);
+
+        row.NameText = nameText;
+        row.NameCanvas = nameCanvas;
+        row.NameHost = nameHost;
+        row.NameShift = nameShift;
 
         for (var i = 0; i < 3; i++)
         {
@@ -145,7 +358,7 @@ public sealed class MiniBarWindow : Window
                 Margin = new Thickness(3, 1, 0, 0),
             };
             label.SetResourceReference(TextBlock.ForegroundProperty, "T.TextDim");
-            _labels[i] = label;
+            row.Labels[i] = label;
 
             var bolt = new Path
             {
@@ -166,143 +379,55 @@ public sealed class MiniBarWindow : Window
             Grid.SetColumn(panel, i + 1);
             grid.Children.Add(panel);
 
-            _cells[i] = (value, dot, bolt);
-            _panels[i] = panel;
+            row.Cells[i] = (value, dot, bolt);
+            row.Panels[i] = panel;
         }
-        return grid;
+        row.Root = grid;
+        return row;
     }
 
-    /// <summary>跟随关注设备更新型号名（连接枚举即可得，不必等广播）；null=保持现名。</summary>
-    public void SetDeviceName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name) || name == _lastName) return;
-        _lastName = name;
-        _nameText.Text = name;
-        Dispatcher.BeginInvoke(UpdateMarquee, DispatcherPriority.Loaded);
-    }
+    // ---------- 跑马灯 ----------
 
-    /// <summary>接收关注设备的广播数据。</summary>
-    public void Push(EarbudsUpdate u)
+    /// <summary>名字超出行宽时左右来回滑动；放得下则居中。</summary>
+    private void UpdateMarquee(BarRow row)
     {
-        var name = string.IsNullOrWhiteSpace(u.DisplayName) ? L.T("mini.earbuds") : u.DisplayName!;
-        if (name != _lastName)
-        {
-            _lastName = name;
-            _nameText.Text = name;
-            // 等布局完成后再判断是否需要跑马灯
-            Dispatcher.BeginInvoke(UpdateMarquee, DispatcherPriority.Loaded);
-        }
-        _broadcastSeen = u.Timestamp;
-        var s = u.Snapshot;
-        _lastValues[0] = s.LeftPercent;
-        _lastValues[1] = s.RightPercent;
-        _lastValues[2] = s.CasePercent;
-        _inCase[0] = s.LeftInCase;
-        _inCase[1] = s.RightInCase;
-        _inCase[2] = false;
-        _lastTimes[0] = _lastTimes[1] = _lastTimes[2] = u.Timestamp;
-        Render();
-    }
+        row.NameShift.X = 0;
+        double viewW = row.NameHost.ActualWidth;
+        double textW = row.NameCanvas.DesiredSize.Width;
+        if (viewW <= 0 || textW <= 0) return;
 
-    /// <summary>
-    /// 名字放不下时左右来回滑动（跑马灯）；放得下则复位静止。
-    /// Canvas 测量不受列宽约束，ActualWidth 即完整文字宽度；
-    /// Canvas 高度=文字高度且宿主垂直居中，无需手动定位。
-    /// </summary>
-    private void UpdateMarquee()
-    {
-        _nameShift.BeginAnimation(TranslateTransform.XProperty, null);
-        double textW = _nameText.ActualWidth;
-        double viewW = _nameHost.ActualWidth;
-        if (viewW <= 0 || textW <= 0)
-            return;   // 尚未完成布局，SizeChanged/Loaded 时机回来重判
+        row.NameCanvas.BeginAnimation(Canvas.LeftProperty, null);
+        row.NameShift.BeginAnimation(TranslateTransform.XProperty, null);
+
         if (textW <= viewW + 0.5)
         {
-            _nameShift.X = Math.Max(0, (viewW - textW) / 2);   // 在名字区域内水平居中
+            row.NameShift.X = Math.Max(0, (viewW - textW) / 2);   // 在名字区域内水平居中
             return;
         }
-        double overflow = textW - viewW + 10;   // 末尾留一点缓冲
-        _nameShift.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation
+
+        double overflow = textW - viewW + 12;   // 缓冲，让尾部完整滑入视野
+        double speed = 24;                       // px/s 基速
+        double dur = Math.Min(8, Math.Max(2.5, overflow / speed));
+        var anim = new DoubleAnimation
         {
             From = 0,
             To = -overflow,
-            Duration = TimeSpan.FromSeconds(Math.Clamp(overflow / 22, 2.5, 8)),
+            Duration = TimeSpan.FromSeconds(dur),
             AutoReverse = true,
             RepeatBehavior = RepeatBehavior.Forever,
-        });
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut },
+        };
+        row.NameShift.BeginAnimation(TranslateTransform.XProperty, anim);
     }
 
-    private void Render()
-    {
-        if (!_themeHooked)
-        {
-            ThemeManager.ThemeChanged += () => Dispatcher.Invoke(Render);
-            _themeHooked = true;
-        }
-        bool offline = _broadcastSeen == DateTime.MinValue ||
-                       (DateTime.Now - _broadcastSeen).TotalSeconds > StaleSeconds;
-        Opacity = offline ? 0.55 : 1.0;
+    // ---------- 右键菜单（多选勾选展开） ----------
 
-        // 三格是否有新鲜分耳数据；没有时若系统整机电量可得 → 单格兜底模式
-        // （未适配机型广播无电量、或连接播放广播停发时，悬浮条不至于全是 --）
-        bool anyFresh = false;
-        for (var i = 0; i < 3; i++)
-        {
-            if (_lastValues[i] is not null &&
-                (DateTime.Now - _lastTimes[i]).TotalSeconds <= FreshSeconds)
-                anyFresh = true;
-        }
-        int? sys = anyFresh ? null : SystemBatteryProvider?.Invoke();
-
-        for (var i = 0; i < 3; i++)
-        {
-            var (value, dot, bolt) = _cells[i];
-            var panel = _panels[i];
-            bool fresh = anyFresh && _lastValues[i] is not null &&
-                         (DateTime.Now - _lastTimes[i]).TotalSeconds <= FreshSeconds;
-
-            if (sys is { } sv && i == 0)
-            {
-                // 系统整机电量单格：标签切「整机」，隐藏闪电（系统值无在仓概念）
-                panel!.Visibility = Visibility.Visible;
-                value.Text = $"{sv}%";
-                value.SetResourceReference(TextBlock.ForegroundProperty, "T.TextPrimary");
-                dot.Fill = new SolidColorBrush(ThemeManager.ColorFor(sv));
-                bolt.Visibility = Visibility.Collapsed;
-                _labels[0].Text = L.T("mini.all");
-            }
-            else if (sys is { })
-            {
-                panel!.Visibility = Visibility.Collapsed;   // 单格模式隐藏其余两格
-            }
-            else if (fresh)
-            {
-                int v = _lastValues[i]!.Value;
-                panel!.Visibility = Visibility.Visible;
-                value.Text = $"{v}%";
-                value.SetResourceReference(TextBlock.ForegroundProperty, "T.TextPrimary");
-                dot.Fill = new SolidColorBrush(ThemeManager.ColorFor(v));
-                bolt.Visibility = _inCase[i] ? Visibility.Visible : Visibility.Collapsed;
-                _labels[i].Text = MiniLabel(i);
-            }
-            else
-            {
-                panel!.Visibility = Visibility.Visible;
-                value.Text = "--";
-                value.SetResourceReference(TextBlock.ForegroundProperty, "T.TextDim");
-                dot.Fill = new SolidColorBrush(ThemeManager.GetColor("T.Unknown"));
-                bolt.Visibility = Visibility.Collapsed;
-                _labels[i].Text = MiniLabel(i);
-            }
-        }
-    }
-
-    /// <summary>右键弹出设备切换菜单（列出已登记设备，勾选当前关注设备）。</summary>
+    /// <summary>右键弹出设备菜单：勾选=在悬浮条显示该设备行（多选）。</summary>
     private void OpenDeviceMenu()
     {
         if (DeviceListProvider?.Invoke() is not { Count: > 0 } devices)
             return;
-        var active = ActiveMacProvider?.Invoke();
+        var pinned = new HashSet<string>(_config.MiniBarPinned, StringComparer.OrdinalIgnoreCase);
         var menu = new ContextMenu
         {
             PlacementTarget = this,
@@ -315,11 +440,18 @@ public sealed class MiniBarWindow : Window
             {
                 Header = name,
                 IsCheckable = true,
-                IsChecked = string.Equals(mac, active, StringComparison.OrdinalIgnoreCase),
+                IsChecked = pinned.Contains(mac),
                 StaysOpenOnClick = true,
                 Template = MenuItemTemplate(),
             };
-            item.Click += (_, _) => DeviceSwitchRequested?.Invoke(mac);
+            item.Click += (_, _) =>
+            {
+                if (item.IsChecked) pinned.Add(mac);
+                else pinned.Remove(mac);
+                _config.MiniBarPinned = pinned.ToList();
+                _config.Save();
+                Render();
+            };
             menu.Items.Add(item);
         }
         menu.IsOpen = true;
@@ -371,12 +503,13 @@ public sealed class MiniBarWindow : Window
             </ControlTemplate>
             """);
 
-    /// <summary>语言切换：更新悬浮条标题与小标签（设备名随下一次广播刷新）。</summary>
+    // ---------- 语言 / 主题 / 开关 / 位置 ----------
+
+    /// <summary>语言切换：更新标题与各标签（Render 会刷新行内标签）。</summary>
     private void ApplyLanguage()
     {
         Title = L.T("mini.title");
-        for (var i = 0; i < 3; i++)
-            _labels[i].Text = MiniLabel(i);
+        Render();
     }
 
     /// <summary>按配置显示/隐藏（跟随设置开关，App 启动与设置变更时调用）。</summary>

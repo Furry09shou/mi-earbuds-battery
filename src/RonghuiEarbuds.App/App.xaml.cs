@@ -51,15 +51,14 @@ public partial class App : Application
                 _miniBar?.ApplyEnabled();
                 _tray?.SyncMiniBarChecked(enabled);
             }),
-            name => Dispatcher.Invoke(() => _miniBar?.SetDeviceName(name)));
+            (mac, devName) => Dispatcher.Invoke(() => _miniBar?.SetDeviceName(mac, devName)));
 
         _miniBar = new MiniBarWindow(_config)
         {
             OpenMainRequested = () => ShowMainWindow(),
-            SystemBatteryProvider = () => _window?.ActiveSystemBattery,
+            SystemBatteryProvider = mac => _window?.SystemBatteryOf(mac),
             DeviceListProvider = () => _window?.KnownDeviceList() ?? Array.Empty<(string, string)>(),
             ActiveMacProvider = () => _window?.ActiveMac,
-            DeviceSwitchRequested = mac => Dispatcher.Invoke(() => _window?.SelectDeviceByMac(mac)),
         };
 
         _tray = new TrayController(_watcher, _config)
@@ -92,16 +91,15 @@ public partial class App : Application
         });
 
         // 主面板在托盘时，耳机开盖拿到广播数据（左/右/仓）→ 主窗口拉起到最上层；
-        // 同一份数据喂给悬浮条与低电量监控（都只跟随关注设备）
+        // 同一份数据喂给悬浮条与低电量监控：悬浮条吃全量（多行显示勾选设备），
+        // 低电量监控只跟随关注设备
         var lastDataAt = DateTime.MinValue;
         var lastShowAt = DateTime.Now;   // 启动后第一波广播不弹，等真正"打开耳机"
         _watcher.UpdateReceived += u => Dispatcher.Invoke(() =>
         {
+            _miniBar?.Push(u);
             if (u.Mac == _window?.ActiveMac)
-            {
-                _miniBar?.Push(u);
                 _monitor?.OnUpdate(u);
-            }
 
             var now = DateTime.Now;
             var quiet = now - lastDataAt > TimeSpan.FromSeconds(30);
@@ -131,7 +129,8 @@ public partial class App : Application
         }
 
         _miniBar.ApplyEnabled();   // 恢复悬浮条开关状态
-        _miniBar.SetDeviceName(_window.ActiveDeviceName);   // 补投启动时已知的设备名
+        if (_window.ActiveMac is { } startMac)   // 补投启动时已知的设备名
+            _miniBar.SetDeviceName(startMac, _window.ActiveDeviceName);
         _ = CheckUpdateDailyAsync();
     }
 

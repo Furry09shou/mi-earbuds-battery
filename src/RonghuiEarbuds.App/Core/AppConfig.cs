@@ -50,6 +50,9 @@ public sealed class AppConfig
     public double? MiniBarLeft { get; set; }
     public double? MiniBarTop { get; set; }
 
+    /// <summary>悬浮条右键菜单勾选显示的设备 MAC（多行展开；空=只显示关注设备）。</summary>
+    public List<string> MiniBarPinned { get; set; } = new();
+
     /// <summary>外观模式：system=跟随 Windows（默认）/ dark=深色 / light=浅色。</summary>
     public string ThemeMode { get; set; } = "system";
 
