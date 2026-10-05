@@ -228,8 +228,10 @@ public sealed class MiniBarWindow : Window
             Dispatcher.BeginInvoke(() => UpdateMarquee(row), DispatcherPriority.Loaded);
         }
 
-        // 行级灰显：该设备广播长期无数据（断连/停发但系统值也没有）
-        bool offline = dev.BroadcastSeen == DateTime.MinValue ||
+        // 行级灰显：曾有广播但停了（断连/连接播放停发）。从未广播的设备（靠系统
+        // 心跳存活的未适配机型）不灰显，否则会长期半透明
+        bool everBroadcast = dev.BroadcastSeen != DateTime.MinValue;
+        bool offline = everBroadcast &&
                        (DateTime.Now - dev.BroadcastSeen).TotalSeconds > StaleSeconds;
         row.Root.Opacity = offline ? 0.75 : 1.0;
 

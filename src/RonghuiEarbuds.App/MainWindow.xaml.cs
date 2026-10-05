@@ -45,9 +45,12 @@ public partial class MainWindow : Window
     /// <summary>当前关注设备的系统整机电量（悬浮条兜底显示用）。</summary>
     public int? ActiveSystemBattery => _active?.SystemBattery;
 
-    /// <summary>指定设备的系统整机电量（悬浮条多行兜底显示用）。</summary>
+    /// <summary>指定设备的系统整机电量（悬浮条多行兜底显示用）。
+    /// 仅在设备仍活着（连接心跳持续刷新 LastSeen）时返回，断开后旧值过时会误导。</summary>
     public int? SystemBatteryOf(string mac) =>
-        _devices.TryGetValue(mac, out var d) ? d.SystemBattery : null;
+        _devices.TryGetValue(mac, out var d) &&
+        (DateTime.Now - d.LastSeen).TotalSeconds <= 60
+            ? d.SystemBattery : null;
 
     /// <summary>悬浮条右键菜单用：值得列出的设备（已持久化名单 + 近期见过的设备）。</summary>
     public IReadOnlyList<(string Name, string Mac)> KnownDeviceList() =>
