@@ -11,7 +11,7 @@
     <AssemblyName>RonghuiEarbuds</AssemblyName>
     <RootNamespace>RonghuiEarbuds.App</RootNamespace>
     <ApplicationIcon>..\..\assets\RonghuiEarbuds.ico</ApplicationIcon>
-    <Version>1.7.3</Version>
+    <Version>1.7.4</Version>
     <!-- 用户装了更高版本运行时（11+）也能直接运行，无需恰好是 10；需要 .NET 10+ 桌面运行时 -->
     <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
