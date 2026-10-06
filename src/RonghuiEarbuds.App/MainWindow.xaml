@@ -849,8 +849,10 @@
                         <TranslateTransform x:Name="AdapterTranslate" Y="0"/>
                     </Grid.RenderTransform>
 
-                    <!-- 名单页 -->
-                    <StackPanel x:Name="AdapterListPage">
+                    <!-- 名单页（机型条目多时允许纵向滚动） -->
+                    <Grid x:Name="AdapterListPage">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
                         <TextBlock x:Name="LblAdapterListIntro" TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource T.TextSecondary}"
                                    Text="绿色机型已完成协议适配，红色机型因设备原因无法适配。"/>
                         <ItemsControl x:Name="ModelList" Margin="0,12,0,0">
@@ -901,7 +903,9 @@
                         <TextBlock x:Name="LblAdapterListHint" TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource T.TextSecondary}"
                                    Margin="0,4,0,0"
                                    Text="没找到你的耳机？点右下角「适配新耳机」，按向导采集广播数据即可众包适配。"/>
-                    </StackPanel>
+                        </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
 
                     <!-- 向导页 0：写入型号 -->
                     <StackPanel x:Name="AdapterPage0" Visibility="Collapsed">
