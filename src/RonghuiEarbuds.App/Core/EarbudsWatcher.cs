@@ -63,7 +63,11 @@ public sealed class EarbudsWatcher : IDisposable
         var snapshot = XiaomiAdvParser.Parse(args.Advertisement.ManufacturerData);
         if (snapshot is null) return;
 
-        var mac = FormatMac(args.BluetoothAddress);
+        // Apple 广播地址是随机轮换的（同一副耳机每次开盖换 MAC），
+        // 用型号合成的稳定 ID 当设备标识，绑定/历史/悬浮条才能跟住同一台设备
+        var mac = XiaomiAdvParser.IsAppleKey(snapshot.ProductKey)
+            ? snapshot.ProductKey
+            : FormatMac(args.BluetoothAddress);
 
         // 尚无关注设备时，自动绑定第一台信号足够的设备（避免绑到邻居耳机）
         if (BoundMac is null && args.RawSignalStrengthInDBm >= AutoBindMinRssi)
