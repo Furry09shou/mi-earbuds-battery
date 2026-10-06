@@ -15,3 +15,10 @@ probe_logs/
 # IDE
 .vs/
 .idea/
+
+# 小组件打包产物与本地工具（NuGet 拉的 SDK 工具链、签名包与私钥，不入库）
+widget/pkg/layout/
+widget/pkg/tools/
+widget/pkg/sdktmp/
+widget/pkg/*.msix
+widget/pkg/*.pfx

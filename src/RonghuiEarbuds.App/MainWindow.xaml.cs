@@ -166,6 +166,9 @@ public partial class MainWindow : Window
         L.Changed += () => Dispatcher.Invoke(ApplyLanguage);
         ApplyLanguage();
 
+        // 设备名跑马灯：名字区宽度变化（窗口尺寸/箭头显隐）时重新计算滑动
+        DeviceNameHost.SizeChanged += (_, _) => UpdateDeviceNameMarquee();
+
         ApplyPinState();   // 恢复用户的图钉置顶设置
 
         LoadKnownDevices(config);
@@ -192,6 +195,8 @@ public partial class MainWindow : Window
             if (_probeTick % 15 == 0) ProbeSystemBattery();
             // 每 30 秒刷新一次用量统计（预计可用时长随时间推进而变化）
             if (_probeTick % 30 == 0) RefreshStats();
+            // 每 2 秒向小组件面板广播一次状态（内容没变不写盘）
+            if (_probeTick % 2 == 0) WidgetStatePublisher.Publish(CollectWidgetState());
         };
         _aliveTimer.Start();
 
@@ -212,6 +217,41 @@ public partial class MainWindow : Window
     }
 
     // ---------- 数据 ----------
+
+    /// <summary>收集全部可见设备的状态，供 Windows 小组件面板显示。
+    /// 名单口径与 KnownDeviceList 一致（已持久化名单 + 近 10 分钟见过的设备）。</summary>
+    public WidgetStatePublisher.State CollectWidgetState()
+    {
+        var state = new WidgetStatePublisher.State();
+        foreach (var d in _devices.Values)
+        {
+            if (d.Name.Length == 0 ||
+                !(_knownMacs.Contains(d.Mac) || (DateTime.Now - d.LastSeen).TotalMinutes <= 10))
+                continue;
+            state.Devices.Add(new WidgetStatePublisher.DeviceInfo
+            {
+                Mac = d.Mac,
+                Name = d.Name,
+                Primary = ReferenceEquals(d, _active),
+                Left = d.Left?.Value,
+                Right = d.Right?.Value,
+                Case = d.Case?.Value,
+                LeftInCase = d.LeftInCase == true,
+                RightInCase = d.RightInCase == true,
+                LastBroadcastUtc = d.BroadcastSeen == DateTime.MinValue ? null : d.BroadcastSeen.ToUniversalTime(),
+                ConnSeenUtc = d.ConnSeen == DateTime.MinValue ? null : d.ConnSeen.ToUniversalTime(),
+                SystemBattery = SystemBatteryOf(d.Mac),
+                IsAdapted = d.IsAdapted,
+            });
+        }
+        // 无主选设备时指定第一台存活的，保证小组件有明确显示对象
+        if (state.Devices.Count > 0 && !state.Devices.Any(d => d.Primary))
+        {
+            var first = state.Devices.FirstOrDefault(d => IsDeviceAlive(d.Mac)) ?? state.Devices[0];
+            first.Primary = true;
+        }
+        return state;
+    }
 
     private void ApplyUpdate(EarbudsUpdate u)
     {
@@ -264,6 +304,34 @@ public partial class MainWindow : Window
             merged = true;
         }
 
+        // 改名合并：耳机在系统里被改名后，连接枚举的影子条目与广播显示名对不上，
+        // 同名合并失效，导致同一副耳机出现两个条目、连接条目一直显示「未适配」。
+        // 机型识别本就来自广播数据（productKey/型号 ID），与名字无关；
+        // 这里在「连接中的未适配条目」唯一时自动视为同一副耳机合并。
+        // 判据从严：条目从未收到过广播、名字对不上任何档案名、且当前正连着（ConnSeen 新鲜）；
+        // 多于一个候选时不猜（避免把电量错绑到旁边其他耳机）。
+        var renamed = _devices.Values
+            .Where(d => !d.IsAdapted && !ReferenceEquals(d, st) &&
+                        d.BroadcastSeen == DateTime.MinValue &&
+                        d.Name.Length > 0 && !IsKnownFormatName(d.Name) &&
+                        DateTime.Now - d.ConnSeen <= TimeSpan.FromSeconds(15))
+            .ToList();
+        if (renamed.Count == 1)
+        {
+            var shadow = renamed[0];
+            st.Name = shadow.Name;   // 采用用户改的名字，与系统蓝牙设置一致，后续连接心跳按名字对上
+            if (ReferenceEquals(st, _active))
+            {
+                DeviceNameText.Text = st.Name;
+                Dispatcher.BeginInvoke(UpdateDeviceNameMarquee, DispatcherPriority.Render);
+            }
+            _onActiveDeviceName?.Invoke(u.Mac, st.Name);
+            _devices.Remove(shadow.Mac);
+            _knownMacs.Remove(shadow.Mac);
+            if (ReferenceEquals(shadow, _active)) _active = null;
+            merged = true;
+        }
+
         if (isNew || merged || upgraded)
         {
             PersistKnownDevices();   // 名单变化落盘
@@ -288,6 +356,37 @@ public partial class MainWindow : Window
         _onUpdateApplied?.Invoke(u);
     }
 
+    /// <summary>
+    /// 设备名跑马灯：名字超出可用宽度时来回滑动，放得下则左对齐。
+    /// 切换箭头固定在右侧独立列，长名字不再把它挤出窗口。
+    /// 实现同悬浮条：Canvas 提供无限约束测量（Grid 测宽会被列宽截断），
+    /// 文字宽度读 TextBlock.DesiredSize（Canvas 自身 DesiredSize 恒 0）。
+    /// </summary>
+    private void UpdateDeviceNameMarquee()
+    {
+        DeviceNameShift.X = 0;
+        double viewW = DeviceNameHost.ActualWidth;
+        double textW = DeviceNameText.DesiredSize.Width;
+        if (viewW <= 0 || textW <= 0) return;
+
+        DeviceNameCanvas.BeginAnimation(Canvas.LeftProperty, null);
+        DeviceNameShift.BeginAnimation(TranslateTransform.XProperty, null);
+
+        if (textW <= viewW + 0.5) return;   // 放得下：左对齐不动
+
+        double overflow = textW - viewW + 12;   // 缓冲，让尾部完整滑入视野
+        double dur = Math.Min(8, Math.Max(2.5, overflow / 24.0));   // 24 px/s 基速
+        DeviceNameShift.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation
+        {
+            From = 0,
+            To = -overflow,
+            Duration = TimeSpan.FromSeconds(dur),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut },
+        });
+    }
+
     private DeviceState GetOrAdd(string mac)
     {
         if (!_devices.TryGetValue(mac, out var st))
@@ -300,6 +399,7 @@ public partial class MainWindow : Window
     {
         _active = st;
         DeviceNameText.Text = st.Name.Length > 0 ? st.Name : L.T("main.identifying");
+        Dispatcher.BeginInvoke(UpdateDeviceNameMarquee, DispatcherPriority.Render);
         _onActiveDeviceName?.Invoke(st.Mac, st.Name.Length > 0 ? st.Name : "");
         MacText.Text = st.Mac;
         UnadaptedHint.Visibility = st.IsAdapted ? Visibility.Collapsed : Visibility.Visible;
@@ -593,7 +693,10 @@ public partial class MainWindow : Window
 
         // 无设备在显示时刷新兜底名；有设备时名字是真实设备名，不动
         if (_active is null && !_devices.Values.Any())
+        {
             DeviceNameText.Text = L.T("main.searching");
+            Dispatcher.BeginInvoke(UpdateDeviceNameMarquee, DispatcherPriority.Render);
+        }
 
         LblLeftTitle.Text = L.T("main.left");
         LblRightTitle.Text = L.T("main.right");
@@ -701,6 +804,7 @@ public partial class MainWindow : Window
         DevicePopup.IsOpen = false;
 
         DeviceNameText.Text = L.T("main.searching");
+        Dispatcher.BeginInvoke(UpdateDeviceNameMarquee, DispatcherPriority.Render);
         MacText.Text = "";
         UnadaptedHint.Visibility = Visibility.Collapsed;
         SetRingInstant(LeftRing, null);
@@ -1809,6 +1913,7 @@ public partial class MainWindow : Window
     private const string LayoutMono = "mono";
 
     // 双耳 + 充电仓（仓也广播电量的常见真无线）——存 key，取值时经 L.T 解析当前语言
+    // 步骤含独立的「戴上使用 / 摘下静置」段：佩戴态广播可能与静置不同，需单独采集
     private static readonly (string Key, string DetailKey)[] StepsDual =
     {
         ("wizard.dual1T", "wizard.dual1D"),
@@ -1816,6 +1921,8 @@ public partial class MainWindow : Window
         ("wizard.dual3T", "wizard.dual3D"),
         ("wizard.dual4T", "wizard.dual4D"),
         ("wizard.dual5T", "wizard.dual5D"),
+        ("wizard.dual6T", "wizard.dual6D"),
+        ("wizard.dual7T", "wizard.dual7D"),
     };
 
     // 仅双耳（无仓或仓不广播电量）：动作兼容两种耳机——开关机或入仓出仓均可
@@ -1826,6 +1933,8 @@ public partial class MainWindow : Window
         ("wizard.dnc3T", "wizard.dnc3D"),
         ("wizard.dnc4T", "wizard.dnc4D"),
         ("wizard.dnc5T", "wizard.dnc5D"),
+        ("wizard.dnc6T", "wizard.dnc6D"),
+        ("wizard.dnc7T", "wizard.dnc7D"),
     };
 
     // 仅单耳（无充电仓）：只有一只耳机，观察开机/使用/静置/重启的状态差别
@@ -1839,7 +1948,7 @@ public partial class MainWindow : Window
     };
 
     private readonly CaptureService _capture = new();
-    private int _adapterPage = -1;      // -1=不在适配视图，0=型号页，1..5=动作步骤
+    private int _adapterPage = -1;      // -1=不在适配视图，0=型号页，1..N=动作步骤（N 按形态）
     private bool _adapterRunning;
     private string _layout = LayoutDualCase;
     private int _captureShown = -1;
@@ -1900,10 +2009,11 @@ public partial class MainWindow : Window
         if (page >= 1)
         {
             // 步骤标题与详情（按耳机形态区分文案）
-            var (title, detail) = CurrentSteps()[page - 1];
+            var steps = CurrentSteps();
+            var (title, detail) = steps[page - 1];
             ((TextBlock)FindName($"StepTitle{page}")!).Text = title;
             ((TextBlock)FindName($"StepDetail{page}")!).Text = detail;
-            ((TextBlock)FindName($"StepNum{page}")!).Text = L.F("wizard.stepFmt", page);
+            ((TextBlock)FindName($"StepNum{page}")!).Text = L.F("wizard.stepFmt", page, steps.Length);
         }
 
         ShowOnlyAdapterPage(page == 0 ? (UIElement)AdapterPage0 : (UIElement)FindName($"AdapterPage{page}")!);
@@ -1911,11 +2021,12 @@ public partial class MainWindow : Window
         BuildAdapterDots(page);
         LiveBox.Visibility = page >= 1 ? Visibility.Visible : Visibility.Collapsed;
         AdapterBackButton.Content = _adapterRunning ? L.T("wizard.cancel") : L.T("settings.back");
+        var total = CurrentSteps().Length;
         AdapterMainButtonText.Text = page switch
         {
             0 => L.T("wizard.beginCapture"),
-            5 => L.T("wizard.finishUpload"),
-            _ => L.F("wizard.nextFmt", page),
+            var p when p == total => L.T("wizard.finishUpload"),
+            _ => L.F("wizard.nextFmt", page, total),
         };
         AnimateWindowHeight(AdapterWizardHeight, instant: false);
         AnimateAdapterView(instant: false);
@@ -1927,7 +2038,7 @@ public partial class MainWindow : Window
         AdapterView.Visibility = Visibility.Visible;
         AdapterListPage.Visibility = ReferenceEquals(current, AdapterListPage)
             ? Visibility.Visible : Visibility.Collapsed;
-        for (var i = 0; i <= 5; i++)
+        for (var i = 0; i <= 7; i++)
         {
             var page = (UIElement)FindName($"AdapterPage{i}")!;
             page.Visibility = ReferenceEquals(page, current) ? Visibility.Visible : Visibility.Collapsed;
@@ -1945,10 +2056,13 @@ public partial class MainWindow : Window
 
     private void BuildAdapterDots(int active)
     {
-        if (_dots is null)
+        // 点数 = 步骤数 + 型号页，按当前形态动态重建（双耳 8 点 / 单耳 6 点）
+        var total = CurrentSteps().Length + 1;
+        if (_dots is null || _dots.Length != total)
         {
-            _dots = new Border[6];
-            for (var i = 0; i < 6; i++)
+            DotsRow.Children.Clear();
+            _dots = new Border[total];
+            for (var i = 0; i < total; i++)
             {
                 _dots[i] = new Border
                 {
@@ -1960,7 +2074,7 @@ public partial class MainWindow : Window
                 DotsRow.Children.Add(_dots[i]);
             }
         }
-        for (var i = 0; i < 6; i++)
+        for (var i = 0; i < total; i++)
         {
             _dots[i].Background = new SolidColorBrush(i <= active
                 ? ThemeManager.GetColor("T.Accent")
@@ -2057,7 +2171,7 @@ public partial class MainWindow : Window
         }
 
         _capture.AddMarker($"完成阶段{_adapterPage}:{CurrentSteps()[_adapterPage - 1].Title}");
-        if (_adapterPage < 5)
+        if (_adapterPage < CurrentSteps().Length)
         {
             ShowAdapterPage(_adapterPage + 1);
         }

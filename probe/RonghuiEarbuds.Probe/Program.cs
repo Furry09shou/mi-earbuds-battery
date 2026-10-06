@@ -19,6 +19,8 @@ using Windows.Storage.Streams;
 Console.OutputEncoding = Encoding.UTF8;
 
 var cmd = args.Length > 0 ? args[0].ToLowerInvariant() : "help";
+// 双击启动（无参数）：执行完不能秒退窗口，否则看起来像闪退
+var interactiveLaunch = args.Length == 0;
 
 try
 {
@@ -38,8 +40,15 @@ try
 catch (Exception ex)
 {
     Console.ForegroundColor = ConsoleColor.Red;
-    Console.WriteLine($"[错误] {ex.Message}");
+    Console.WriteLine($"[错误] {ex}");
     Console.ResetColor();
+}
+
+if (interactiveLaunch || cmd == "help")
+{
+    Console.WriteLine();
+    Console.WriteLine("按回车键关闭窗口…");
+    Console.ReadLine();
 }
 
 return;

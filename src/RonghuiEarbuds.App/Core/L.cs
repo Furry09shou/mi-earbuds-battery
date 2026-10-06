@@ -185,14 +185,14 @@ public static class L
                                  "(a single bud has no left/right split; without a case there will be no case " +
                                  "battery field). Your choice is submitted with the data to help developers " +
                                  "identify the layout correctly."),
-        ["wizard.stepFmt"] = ("步骤 {0} / 5", "Step {0} / 5"),
+        ["wizard.stepFmt"] = ("步骤 {0} / {1}", "Step {0} / {1}"),
         ["wizard.waitingCapture"] = ("等待开始采集…", "Waiting to start capture…"),
         ["wizard.capturedFmt"] = ("已捕获 {0} 包 · 公司代号: {1} · 产品标识: {2}",
                                   "Captured {0} packets · company IDs: {1} · product keys: {2}"),
         ["wizard.startAdapter"] = ("适配新耳机 ›", "Add new earbuds ›"),
         ["wizard.beginCapture"] = ("开始采集", "Start capture"),
         ["wizard.finishUpload"] = ("完成并上传", "Finish & upload"),
-        ["wizard.nextFmt"] = ("下一步（{0}/5）", "Next ({0}/5)"),
+        ["wizard.nextFmt"] = ("下一步（{0}/{1}）", "Next ({0}/{1})"),
         ["wizard.cancel"] = ("取消", "Cancel"),
         ["wizard.cancelConfirm"] = ("采集进行中，确定取消并丢弃已采集的数据吗？",
                                     "A capture is in progress. Cancel and discard the data collected so far?"),
@@ -229,9 +229,21 @@ public static class L
         ["wizard.dual4T"] = ("取出右耳，等 10 秒", "Take out the right bud, wait 10s"),
         ["wizard.dual4D"] = ("把右耳从仓中取出，左耳留在仓内，等待约 10 秒。",
                              "Take the right bud out of the case, keep the left bud inside, and wait about 10 seconds."),
-        ["wizard.dual5T"] = ("右耳放回，完成采集", "Put the right bud back to finish"),
-        ["wizard.dual5D"] = ("把右耳放回仓内，等待约 10 秒，然后点击「完成并上传」。",
-                             "Put the right bud back into the case, wait about 10 seconds, then click “Finish & upload”."),
+        ["wizard.dual5T"] = ("戴上双耳使用，等 10 秒", "Wear both buds, wait 10s"),
+        ["wizard.dual5D"] = ("把两只耳机都戴上正常使用（播放或暂停都可以），等待约 10 秒——" +
+                             "很多耳机在佩戴/工作状态下广播内容会变化，需要单独采集这一状态。",
+                             "Wear both buds and use them normally (playing or paused both fine), and wait " +
+                             "about 10 seconds — many earbuds advertise differently while worn/in use, " +
+                             "so this state is captured separately."),
+        ["wizard.dual6T"] = ("摘下双耳静置，等 10 秒", "Take both buds off, wait 10s"),
+        ["wizard.dual6D"] = ("把两只耳机摘下来放在桌上（保持开机，不要放回仓），等待约 10 秒——" +
+                             "对比佩戴与静置两种状态的广播差异。",
+                             "Take both buds off and rest them on the desk (keep them powered on, do not " +
+                             "put them back into the case), and wait about 10 seconds — this contrasts the " +
+                             "worn vs idle advertising states."),
+        ["wizard.dual7T"] = ("双耳放回仓，完成采集", "Put both buds back to finish"),
+        ["wizard.dual7D"] = ("把两只耳机都放回仓内，等待约 10 秒，然后点击「完成并上传」。",
+                             "Put both buds back into the case, wait about 10 seconds, then click “Finish & upload”."),
 
         // ---- 向导步骤：仅双耳（无仓或仓不广播） ----
         ["wizard.dnc1T"] = ("双耳就位，等 10 秒", "Both buds ready, wait 10s"),
@@ -241,17 +253,28 @@ public static class L
                             "place them next to the PC, and wait about 10 seconds — a uniform initial state " +
                             "gives the most complete advertising. This kind of case provides no battery data " +
                             "(or there is no case); only the two buds matter throughout."),
-        ["wizard.dnc2T"] = ("隔离左耳，等 10 秒", "Isolate the left bud, wait 10s"),
-        ["wizard.dnc2D"] = ("把左耳关机，或放回充电仓并合上仓盖（右耳保持在外），等待约 10 秒。",
+        ["wizard.dnc2T"] = ("戴上双耳使用，等 10 秒", "Wear both buds, wait 10s"),
+        ["wizard.dnc2D"] = ("把两只耳机都戴上正常使用（播放或暂停都可以），等待约 10 秒——" +
+                            "很多耳机在佩戴/工作状态下广播内容会变化，需要单独采集这一状态。",
+                            "Wear both buds and use them normally (playing or paused both fine), and wait " +
+                            "about 10 seconds — many earbuds advertise differently while worn/in use, " +
+                            "so this state is captured separately."),
+        ["wizard.dnc3T"] = ("摘下双耳静置，等 10 秒", "Take both buds off, wait 10s"),
+        ["wizard.dnc3D"] = ("把两只耳机摘下来放在桌上（保持开机），等待约 10 秒——" +
+                            "对比佩戴与静置两种状态的广播差异。",
+                            "Take both buds off and rest them on the desk (keep them powered on), and wait " +
+                            "about 10 seconds — this contrasts the worn vs idle advertising states."),
+        ["wizard.dnc4T"] = ("隔离左耳，等 10 秒", "Isolate the left bud, wait 10s"),
+        ["wizard.dnc4D"] = ("把左耳关机，或放回充电仓并合上仓盖（右耳保持在外），等待约 10 秒。",
                             "Power the left bud off, or put it back into the case and close the lid (right bud stays out), and wait about 10 seconds."),
-        ["wizard.dnc3T"] = ("左耳归队，等 10 秒", "Reunite the left bud, wait 10s"),
-        ["wizard.dnc3D"] = ("把左耳重新开机，或从仓中取出，恢复双耳在外，等待约 10 秒。",
+        ["wizard.dnc5T"] = ("左耳归队，等 10 秒", "Reunite the left bud, wait 10s"),
+        ["wizard.dnc5D"] = ("把左耳重新开机，或从仓中取出，恢复双耳在外，等待约 10 秒。",
                             "Power the left bud back on, or take it out of the case so both buds are out again, and wait about 10 seconds."),
-        ["wizard.dnc4T"] = ("隔离右耳，等 10 秒", "Isolate the right bud, wait 10s"),
-        ["wizard.dnc4D"] = ("把右耳关机，或放回充电仓并合上仓盖（左耳保持在外），等待约 10 秒。",
+        ["wizard.dnc6T"] = ("隔离右耳，等 10 秒", "Isolate the right bud, wait 10s"),
+        ["wizard.dnc6D"] = ("把右耳关机，或放回充电仓并合上仓盖（左耳保持在外），等待约 10 秒。",
                             "Power the right bud off, or put it back into the case and close the lid (left bud stays out), and wait about 10 seconds."),
-        ["wizard.dnc5T"] = ("右耳归队，完成采集", "Reunite the right bud to finish"),
-        ["wizard.dnc5D"] = ("把右耳重新开机，或从仓中取出，双耳在外等待约 10 秒，然后点击「完成并上传」。" +
+        ["wizard.dnc7T"] = ("右耳归队，完成采集", "Reunite the right bud to finish"),
+        ["wizard.dnc7D"] = ("把右耳重新开机，或从仓中取出，双耳在外等待约 10 秒，然后点击「完成并上传」。" +
                             "数据应只有左右耳两个电量字段，没有充电仓电量。",
                             "Power the right bud back on, or take it out of the case; with both buds out wait " +
                             "about 10 seconds, then click “Finish & upload”. The data should contain only the " +
