@@ -417,7 +417,7 @@ public sealed class MiniBarWindow : Window
 
     // ---------- 跑马灯 ----------
 
-    /// <summary>名字超出行宽时左右来回滑动；放得下则居中。</summary>
+    /// <summary>名字超出行宽时左右来回滑动；放得下则左对齐（各行起点一致，也与下方媒体栏左缘对齐）。</summary>
     private void UpdateMarquee(BarRow row)
     {
         row.NameShift.X = 0;
@@ -428,11 +428,9 @@ public sealed class MiniBarWindow : Window
         row.NameCanvas.BeginAnimation(Canvas.LeftProperty, null);
         row.NameShift.BeginAnimation(TranslateTransform.XProperty, null);
 
-        if (textW <= viewW + 0.5)
-        {
-            row.NameShift.X = Math.Max(0, (viewW - textW) / 2);   // 在名字区域内水平居中
-            return;
-        }
+        if (textW <= viewW + 0.5) return;   // 放得下：左对齐。
+        // 曾按文字宽度在名字区域内水平居中——多台设备名字长短不一时，
+        // 每行起点各不相同，纵向看名字列是参差的（用户要求对齐）。
 
         double overflow = textW - viewW + 12;   // 缓冲，让尾部完整滑入视野
         double speed = 24;                       // px/s 基速
