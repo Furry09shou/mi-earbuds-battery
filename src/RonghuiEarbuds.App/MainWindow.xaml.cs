@@ -617,8 +617,6 @@ public partial class MainWindow : Window
         LblDropSub.Text = L.T("settings.dropSub");
         LblVoiceTitle.Text = L.T("settings.voiceTitle");
         LblVoiceSub.Text = L.T("settings.voiceSub");
-        LblChargeTitle.Text = L.T("settings.chargeTitle");
-        LblChargeSub.Text = L.T("settings.chargeSub");
         LblSecPopup.Text = L.T("settings.sectionPopup");
         LblPopupTitle.Text = L.T("settings.popupTitle");
         LblPopupSub.Text = L.T("settings.popupSub");
@@ -997,7 +995,6 @@ public partial class MainWindow : Window
         MiniBarCheck.IsChecked = _config.MiniBarEnabled;
         HistoryCheck.IsChecked = _config.HistoryEnabled;
         VoiceAlertsCheck.IsChecked = _config.VoiceAlerts;
-        ChargeFullCheck.IsChecked = _config.ChargeFullAlert;
         MediaControlsCheck.IsChecked = _config.MiniBarMediaControls;
         HotKeyCheck.IsChecked = _config.HotKeyEnabled;
         ApplyAccentDots();
@@ -1196,13 +1193,6 @@ public partial class MainWindow : Window
     {
         if (!_initialized) return;
         _config.VoiceAlerts = VoiceAlertsCheck.IsChecked == true;
-        _config.Save();
-    }
-
-    private void ChargeFullCheck_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!_initialized) return;
-        _config.ChargeFullAlert = ChargeFullCheck.IsChecked == true;
         _config.Save();
     }
 

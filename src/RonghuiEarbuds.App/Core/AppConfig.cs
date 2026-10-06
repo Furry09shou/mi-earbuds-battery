@@ -67,9 +67,6 @@ public sealed class AppConfig
     /// <summary>低电量/骤降提醒时是否同时语音播报（需系统装中文语音）。</summary>
     public bool VoiceAlerts { get; set; }
 
-    /// <summary>耳机与充电仓充满时弹托盘提醒（每个充电周期一次）。</summary>
-    public bool ChargeFullAlert { get; set; } = true;
-
     /// <summary>悬浮条底部媒体控制栏（上一曲/播放暂停/下一曲/播报电量）。</summary>
     public bool MiniBarMediaControls { get; set; } = true;
 

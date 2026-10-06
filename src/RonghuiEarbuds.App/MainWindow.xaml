@@ -599,21 +599,6 @@
                                           Checked="VoiceAlertsCheck_Changed" Unchecked="VoiceAlertsCheck_Changed"/>
                             </Grid>
                         </Border>
-                        <Border Style="{StaticResource SettingsCard}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock x:Name="LblChargeTitle" Text="充满提醒" Style="{StaticResource SettingTitle}"/>
-                                    <TextBlock x:Name="LblChargeSub" Text="耳机与充电仓充满后可拔电时提醒"
-                                               Style="{StaticResource SettingSub}"/>
-                                </StackPanel>
-                                <CheckBox x:Name="ChargeFullCheck" Grid.Column="1" Style="{StaticResource ToggleCheck}"
-                                          Checked="ChargeFullCheck_Changed" Unchecked="ChargeFullCheck_Changed"/>
-                            </Grid>
-                        </Border>
 
                         <TextBlock x:Name="LblSecPopup" Text="弹窗" Style="{StaticResource SectionHeader}" Margin="2,10,0,6"/>
                         <Border Style="{StaticResource SettingsCard}">

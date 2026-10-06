@@ -17,7 +17,6 @@ public partial class App : Application
     private MainWindow? _window;
     private MiniBarWindow? _miniBar;
     private LowBatteryMonitor? _monitor;
-    private ChargeMonitor? _charge;
     private VoiceService? _voice;
     private MediaSession? _media;
     private readonly GlobalHotKey _hotKey = new();
@@ -98,13 +97,6 @@ public partial class App : Application
             if (_config.VoiceAlerts) _voice?.Speak(msg);
         });
 
-        // 充满提醒：三通道齐满后报一次（同样遵守语音播报开关）
-        _charge = new ChargeMonitor(_config, (title, msg) =>
-        {
-            _tray?.ShowBalloon(title, msg);
-            if (_config.VoiceAlerts) _voice?.Speak(msg);
-        });
-
         _watcher.DeviceBound += name => Dispatcher.Invoke(() =>
         {
             _config.BoundMac = _watcher!.BoundMac;
@@ -120,9 +112,8 @@ public partial class App : Application
         _watcher.UpdateReceived += u => Dispatcher.Invoke(() =>
         {
             _miniBar?.Push(u);
-            // 低电量 / 骤降 / 充满：全设备监控（每台独立状态、消息带名字），不只关注设备
+            // 低电量 / 骤降：全设备监控（每台独立状态、消息带名字），不只关注设备
             _monitor?.OnUpdate(u);
-            _charge?.OnUpdate(u);
 
             var now = DateTime.Now;
             var quiet = now - lastDataAt > TimeSpan.FromSeconds(30);
