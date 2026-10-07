@@ -11,7 +11,7 @@
     <AssemblyName>RonghuiEarbuds.Setup</AssemblyName>
     <RootNamespace>RonghuiEarbuds.Setup</RootNamespace>
     <ApplicationIcon>..\..\assets\RonghuiEarbuds.ico</ApplicationIcon>
-    <Version>1.7.5</Version>
+    <Version>1.7.6</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -36,6 +36,14 @@
     <ZipDirectory SourceDirectory="$(PayloadWork)app" DestinationFile="$(PayloadWork)app.zip" />
     <ItemGroup>
       <EmbeddedResource Include="$(PayloadWork)app.zip" LogicalName="RonghuiEarbuds.Payload.zip" />
+    </ItemGroup>
+  </Target>
+  <!-- 小组件插件 payload（存在才嵌入，安装器勾选项可在 Win11 上一键装/升级） -->
+  <Target Name="PrepareWidgetPayload" BeforeTargets="AssignTargetPaths"
+          Condition="Exists('..\..\widget\pkg\RonghuiEarbuds.Widgets.msix')">
+    <ItemGroup>
+      <EmbeddedResource Include="..\..\widget\pkg\RonghuiEarbuds.Widgets.msix" LogicalName="RonghuiEarbuds.Widget.msix" />
+      <EmbeddedResource Include="..\..\widget\pkg\RonghuiEarbuds.cer" LogicalName="RonghuiEarbuds.Widget.cer" />
     </ItemGroup>
   </Target>
 </Project>

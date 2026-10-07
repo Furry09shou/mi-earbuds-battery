@@ -11,17 +11,17 @@
   <Identity
     Name="Furry09shou.RonghuiEarbuds.Widgets"
     Publisher="CN=Furry09shou"
-    Version="1.0.0.0" />
+    Version="1.0.1.0" />
 
   <Properties>
-    <DisplayName>绒汇耳机助手小组件</DisplayName>
+    <DisplayName>绒汇耳机助手小组件插件</DisplayName>
     <PublisherDisplayName>Furry09shou</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.22000.0" MaxVersionTested="10.0.22621.0" />
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.22621.0" />
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26220.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26220.0" />
   </Dependencies>
 
   <Resources>
@@ -33,7 +33,7 @@
       Executable="RonghuiEarbuds.Widgets.exe"
       EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="绒汇耳机助手"
+        DisplayName="绒汇耳机助手小组件插件"
         Description="耳机电量小组件"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"

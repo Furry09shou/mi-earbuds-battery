@@ -401,7 +401,8 @@ public partial class MainWindow : Window
         DeviceNameText.Text = st.Name.Length > 0 ? st.Name : L.T("main.identifying");
         Dispatcher.BeginInvoke(UpdateDeviceNameMarquee, DispatcherPriority.Render);
         _onActiveDeviceName?.Invoke(st.Mac, st.Name.Length > 0 ? st.Name : "");
-        MacText.Text = st.Mac;
+        // 苹果协议设备是合成 ID（AP+型号），显示出来只是内部标识，藏掉副标题
+        MacText.Text = XiaomiAdvParser.IsAppleKey(st.Mac) ? "" : st.Mac;
         UnadaptedHint.Visibility = st.IsAdapted ? Visibility.Collapsed : Visibility.Visible;
         SetRingInstant(LeftRing, st.Left);
         SetRingInstant(RightRing, st.Right);

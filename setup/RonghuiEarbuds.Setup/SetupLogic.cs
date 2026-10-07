@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Win32;
 
 namespace RonghuiEarbuds.Setup;
@@ -159,8 +160,8 @@ internal static class SetupLogic
 
     // ============================ 安装 ============================
 
-    /// <summary>执行安装。失败抛异常，由 UI 呈现。</summary>
-    public static void Install(string target, bool autoStart, bool desktop, bool startMenu)
+    /// <summary>执行安装。返回 null=成功，否则为错误文案（由 UI 呈现）。</summary>
+    public static string? Install(string target, bool autoStart, bool desktop, bool startMenu)
     {
         KillRunningApp(target);
 
@@ -169,7 +170,7 @@ internal static class SetupLogic
 
         // 自校验：主程序必须真实存在，否则视为失败且不写任何注册表/快捷方式
         if (!File.Exists(Path.Combine(target, ExeName)))
-            throw new IOException(Loc.T("setup.errPayloadMissing"));
+            return Loc.T("setup.errPayloadMissing");
 
         if (autoStart) SetAutoStart(target);
         if (desktop) MakeShortcut(
@@ -180,6 +181,7 @@ internal static class SetupLogic
                 @"Microsoft\Windows\Start Menu\Programs", $"{AppName}.lnk"), target);
 
         RegisterUninstallEntry(target, GetAppVersion());
+        return null;
     }
 
     public static void StartApp(string target)
@@ -188,6 +190,133 @@ internal static class SetupLogic
         {
             WorkingDirectory = target,
         });
+    }
+
+    // ============================ 小组件插件 ============================
+
+    public const string WidgetPackageName = "Furry09shou.RonghuiEarbuds.Widgets";
+    private const string WidgetCertThumb = "ED861D491A477396A7BB66F12756E42AEAB5A13B";
+
+    /// <summary>是否为 Win11 及以上（小组件面板最低要求 build 22000）。</summary>
+    public static bool IsWidgetOsSupported => Environment.OSVersion.Version.Build >= 22000;
+
+    /// <summary>安装器是否内嵌了小组件 payload（无则隐藏勾选项，开发构建可能没带）。</summary>
+    public static bool HasWidgetPayload =>
+        Assembly.GetExecutingAssembly().GetManifestResourceStream("RonghuiEarbuds.Widget.msix") is not null;
+
+    /// <summary>小组件插件是否已为当前用户安装。</summary>
+    public static bool IsWidgetInstalled()
+    {
+        var r = RunPowerShell($"if (Get-AppxPackage -Name '{WidgetPackageName}') {{ 'yes' }}");
+        return r.Contains("yes", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 安装（或升级）小组件插件。返回 null=成功；返回文案=失败原因（主程序安装不受影响）。
+    /// 流程：提取 msix+cer → 证书不在本机受信任存储时弹 UAC 导入 → Add-AppxPackage
+    /// （同版本或更高版本已装时先移除再装，实现随主程序一起更新）。
+    /// </summary>
+    public static string? InstallWidget(Action? onProgress = null)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "RonghuiWidgetSetup");
+        Directory.CreateDirectory(dir);
+        var msix = Path.Combine(dir, "RonghuiEarbuds.Widgets.msix");
+        var cer = Path.Combine(dir, "RonghuiEarbuds.cer");
+        try
+        {
+            if (ExtractResource("RonghuiEarbuds.Widget.msix", msix) is { } e1) return e1;
+            if (ExtractResource("RonghuiEarbuds.Widget.cer", cer) is { } e2) return e2;
+
+            // 证书导入需要管理员：只在证书缺失时弹一次 UAC，用户取消则跳过小组件
+            if (!IsWidgetCertTrusted())
+            {
+                onProgress?.Invoke();
+                var psi = new ProcessStartInfo("powershell.exe",
+                    $"-NoProfile -ExecutionPolicy Bypass -Command \"Import-Certificate -FilePath '{cer}' -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople\"")
+                {
+                    Verb = "runas",
+                    UseShellExecute = true,
+                    CreateNoWindow = true,
+                };
+                try
+                {
+                    using var p = Process.Start(psi);
+                    p?.WaitForExit();
+                }
+                catch { return null; /* 用户取消 UAC：静默跳过 */ }
+                if (!IsWidgetCertTrusted())
+                    return Loc.T("setup.widgetFailedNote");
+            }
+
+            // 安装/升级：Add-AppxPackage 不接受降级或同版本覆盖，失败则先卸载旧包再装
+            if (!TryAddAppx(msix))
+            {
+                RunPowerShell($"Get-AppxPackage -Name '{WidgetPackageName}' | Remove-AppxPackage");
+                if (!TryAddAppx(msix))
+                    return Loc.T("setup.widgetFailedNote");
+            }
+            return null;
+        }
+        catch
+        {
+            return Loc.T("setup.widgetFailedNote");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* 临时文件下次覆盖 */ }
+        }
+    }
+
+    /// <summary>卸载小组件插件（按当前用户，无需管理员；未安装时无操作）。</summary>
+    public static void RemoveWidget() =>
+        RunPowerShell($"Get-AppxPackage -Name '{WidgetPackageName}' | Remove-AppxPackage");
+
+    private static bool TryAddAppx(string msix)
+    {
+        var r = RunPowerShell($"Add-AppxPackage -Path '{msix}'; if ($?) {{ 'ok' }}");
+        return r.Contains("ok", StringComparison.Ordinal);
+    }
+
+    private static bool IsWidgetCertTrusted()
+    {
+        try
+        {
+            using var store = new X509Store(StoreName.TrustedPeople, StoreLocation.LocalMachine);
+            store.Open(OpenFlags.ReadOnly);
+            return store.Certificates.Find(X509FindType.FindByThumbprint, WidgetCertThumb, validOnly: false)
+                .Count > 0;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>执行 PowerShell 单行脚本并返回输出（安装器场景一次一两秒，可接受）。</summary>
+    private static string RunPowerShell(string script)
+    {
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo(
+                "powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -Command \"{script}\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            });
+            var output = p!.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            return output;
+        }
+        catch { return ""; }
+    }
+
+    private static string? ExtractResource(string logicalName, string dest)
+    {
+        var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(logicalName);
+        if (stream is null) return Loc.T("setup.widgetFailedNote");   // 未内嵌 payload
+        using (stream)
+        using (var fs = File.Create(dest))
+            stream.CopyTo(fs);
+        return null;
     }
 
     /// <summary>
@@ -348,7 +477,10 @@ internal static class SetupLogic
             TryDeleteDir(configDir);
         }
 
-        // 5. 延迟删除安装目录（等本进程退出）
+        // 5. 小组件插件（按用户级卸载；随主程序一起移除）
+        RemoveWidget();
+
+        // 6. 延迟删除安装目录（等本进程退出）
         SpawnSelfDelete(target.TrimEnd(Path.DirectorySeparatorChar));
     }
 

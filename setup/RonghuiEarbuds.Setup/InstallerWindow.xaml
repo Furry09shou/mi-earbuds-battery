@@ -1,7 +1,7 @@
 <Window x:Class="RonghuiEarbuds.Setup.InstallerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="绒汇耳机助手 安装程序" Width="460" Height="504"
+        Title="绒汇耳机助手 安装程序" Width="460" Height="540"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" FontFamily="Microsoft YaHei UI">
@@ -100,6 +100,11 @@
                                   Content="创建桌面快捷方式" IsChecked="True" Margin="0,8,0,0"/>
                         <CheckBox x:Name="StartMenuCheck" Style="{StaticResource ToggleCheck}"
                                   Content="创建开始菜单快捷方式" IsChecked="True" Margin="0,8,0,0"/>
+                        <CheckBox x:Name="WidgetCheck" Style="{StaticResource ToggleCheck}"
+                                  Content="安装 Win11 小组件插件（实验性）" IsChecked="True" Margin="0,8,0,0"/>
+                        <TextBlock x:Name="WidgetNote" FontSize="10" Foreground="#5C5C66"
+                                   Margin="44,4,0,0" Visibility="Collapsed"
+                                   Text="首次安装会弹出系统授权（导入签名证书）" TextWrapping="Wrap"/>
                     </StackPanel>
 
                     <Button x:Name="InstallButton" Style="{StaticResource AccentButton}"

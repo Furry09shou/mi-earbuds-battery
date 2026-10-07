@@ -17,6 +17,7 @@ public partial class InstallerWindow : Window
     private bool _busy;
     private bool _done;
     private string? _doneTarget;        // 安装/升级完成后记录的目标目录（语言切换时重建完成文案）
+    private bool _widgetFailed;         // 小组件插件安装未完成（完成文案追加说明）
 
     public InstallerWindow()
     {
@@ -24,6 +25,13 @@ public partial class InstallerWindow : Window
         LogoImage.Source = App.LoadLogo();
         VersionText.Text = "v" + SetupLogic.NormalizeVersion(SetupLogic.GetAppVersion());
         PathBox.TextChanged += (_, _) => UpdateResolved();
+
+        // 小组件勾选项：仅 Win11+ 且安装器内嵌了插件 payload 时可见；
+        // 证书未受信（首次安装）时提示会弹系统授权
+        var widgetAvailable = SetupLogic.IsWidgetOsSupported && SetupLogic.HasWidgetPayload;
+        WidgetCheck.Visibility = widgetAvailable ? Visibility.Visible : Visibility.Collapsed;
+        if (widgetAvailable && !SetupLogic.IsWidgetInstalled())   // 首次装才可能弹 UAC
+            WidgetNote.Visibility = Visibility.Visible;
 
         // 检测本机是否已安装：预填旧位置并提示升级/重装，避免一台电脑重复安装
         var existing = SetupLogic.DetectExistingInstall();
@@ -66,6 +74,8 @@ public partial class InstallerWindow : Window
         AutoStartCheck.Content = Loc.T("setup.autostart");
         DesktopCheck.Content = Loc.T("setup.desktop");
         StartMenuCheck.Content = Loc.T("setup.startmenu");
+        WidgetCheck.Content = Loc.T("setup.widget");
+        WidgetNote.Text = Loc.T("setup.widgetCertNote");
         UpdateInstallButton();
         BusyText.Text = Loc.T("setup.busyInstall");
         LblDoneTitle.Text = Loc.T("setup.doneTitle");
@@ -98,9 +108,10 @@ public partial class InstallerWindow : Window
     private string UpdateDoneText()
     {
         if (!_done || _doneTarget is null) return Loc.T("setup.doneSubDefault");
-        return _isUpgrade
+        var baseText = _isUpgrade
             ? Loc.F("setup.doneUpgradedFmt", VersionText.Text.TrimStart('v'), _doneTarget)
             : Loc.F("setup.doneInstalledFmt", _doneTarget);
+        return _widgetFailed ? baseText + " " + Loc.T("setup.widgetFailedNote") : baseText;
     }
 
     private void LangButton_Click(object sender, RoutedEventArgs e)
@@ -166,15 +177,30 @@ public partial class InstallerWindow : Window
             var autoStart = AutoStartCheck.IsChecked == true;
             var desktop = DesktopCheck.IsChecked == true;
             var startMenu = StartMenuCheck.IsChecked == true;
+            var installWidget = WidgetCheck.IsChecked == true &&
+                                WidgetCheck.Visibility == Visibility.Visible;
             var existingPath = _existingPath;
-            await System.Threading.Tasks.Task.Run(() =>
+            var result = await System.Threading.Tasks.Task.Run(() =>
             {
                 // 旧安装清理（杀旧进程/自启/快捷方式/登记；换位置时删旧目录），再全新安装
                 if (existingPath is not null)
                     SetupLogic.RemovePreviousInstall(existingPath, _target);
-                SetupLogic.Install(_target, autoStart, desktop, startMenu);
+                var installError = SetupLogic.Install(_target, autoStart, desktop, startMenu);
+
+                // 小组件插件随主程序一起安装/更新（失败不回滚主程序安装）
+                string? widgetError = null;
+                if (installError is null && installWidget)
+                {
+                    Dispatcher.Invoke(() => BusyText.Text = Loc.T("setup.busyWidget"));
+                    widgetError = SetupLogic.InstallWidget();
+                }
+                return (installError, widgetError);
             });
 
+            if (result.installError is not null)
+                throw new IOException(result.installError);
+
+            _widgetFailed = result.widgetError is not null;
             _done = true;
             _doneTarget = _target;
             DoneSubText.Text = UpdateDoneText();
