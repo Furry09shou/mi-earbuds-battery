@@ -31,6 +31,7 @@ public static class L
         ["main.unpin"] = ("取消置顶", "Unpin"),
         ["main.searching"] = ("正在搜索…", "Searching…"),
         ["main.identifying"] = ("正在识别…", "Identifying…"),
+        ["main.appleCompat"] = ("苹果兼容广播", "Apple-compatible"),
         ["main.switchDeviceTip"] = ("切换显示的耳机", "Switch displayed earbuds"),
         ["main.left"] = ("左耳", "Left"),
         ["main.right"] = ("右耳", "Right"),

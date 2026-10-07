@@ -44,6 +44,10 @@ public partial class MainWindow : Window
     /// <summary>当前面板正在显示的设备 MAC（托盘提示只对该设备弹出）。</summary>
     public string? ActiveMac => _active?.Mac;
 
+    /// <summary>该设备广播电量是否不可信（App 用于跳过低电量监控与悬浮条推送）。</summary>
+    public bool IsCloneSuspect(string mac) =>
+        _devices.TryGetValue(mac, out var d) && d.CloneSuspect;
+
     /// <summary>当前关注设备的型号名（无名字时 null）。</summary>
     public string? ActiveDeviceName =>
         _active is { Name.Length: > 0 } st ? st.Name : null;
@@ -126,6 +130,15 @@ public partial class MainWindow : Window
 
         /// <summary>false = 广播格式未适配（系统连接枚举发现，只有在线状态无电量）。</summary>
         public bool IsAdapted = true;
+
+        /// <summary>苹果合成键（AP+型号）对应的真实经典蓝牙 MAC：
+        /// 广播 MAC 随机轮换没有显示价值，连接枚举按名字匹配到时记录，副标题优先显示它。</summary>
+        public string DisplayMac = "";
+
+        /// <summary>电量不可信标记：广播声称苹果协议但系统连接名对不上苹果型号
+        /// （杂牌克隆苹果帧，或广播源归属存疑）。该条目按未适配待遇显示（仅整机电量），
+        /// 广播电量不入卡片/历史/监控，避免错误数据误导用户。</summary>
+        public bool CloneSuspect;
 
         /// <summary>广播暂停时的兜底读数：系统级 HFP/AVRCP 电量（蓝牙设置页同源）。</summary>
         public int? SystemBattery;
@@ -267,21 +280,27 @@ public partial class MainWindow : Window
             _onActiveDeviceName?.Invoke(u.Mac, st.Name);   // 任何设备命名都推给悬浮条（多行显示）
         }
 
-        _history.Record(u.Mac, s);   // 电量历史落库（内部自带节流）
+        // 电量不可信的条目（苹果帧归属存疑）：不入卡片不入历史不升级，
+        // 整台按「不适配」待遇走（只显示系统整机电量）
+        int? left = null, right = null, cse = null;
+        if (!st.CloneSuspect)
+        {
+            _history.Record(u.Mac, s);   // 电量历史落库（内部自带节流）
 
-        // 电量值（带抖动过滤；null 表示本帧无效，维持旧显示）
-        var left = Filter(ref st.Left, s.LeftPercent);
-        var right = Filter(ref st.Right, s.RightPercent);
-        var cse = Filter(ref st.Case, s.CasePercent);
+            // 电量值（带抖动过滤；null 表示本帧无效，维持旧显示）
+            left = Filter(ref st.Left, s.LeftPercent);
+            right = Filter(ref st.Right, s.RightPercent);
+            cse = Filter(ref st.Case, s.CasePercent);
 
-        // 在仓状态：只在收到有效值时更新，避免噪声帧闪烁
-        if (s.LeftPercent is not null) st.LeftInCase = s.LeftInCase;
-        if (s.RightPercent is not null) st.RightInCase = s.RightInCase;
+            // 在仓状态：只在收到有效值时更新，避免噪声帧闪烁
+            if (s.LeftPercent is not null) st.LeftInCase = s.LeftInCase;
+            if (s.RightPercent is not null) st.RightInCase = s.RightInCase;
+        }
 
         // 广播能被解析 = 该格式已适配：探测登记的条目原位升级
         // （多数耳机广播 MAC 与经典蓝牙 MAC 相同，同一个条目）
         var upgraded = false;
-        if (!st.IsAdapted)
+        if (!st.IsAdapted && !st.CloneSuspect)
         {
             st.IsAdapted = true;
             upgraded = true;
@@ -320,9 +339,22 @@ public partial class MainWindow : Window
         {
             var shadow = renamed[0];
             st.Name = shadow.Name;   // 采用用户改的名字，与系统蓝牙设置一致，后续连接心跳按名字对上
+            // 合并掉的影子条目带真实经典蓝牙 MAC：苹果合成键设备没有显示价值稳定的
+            // 广播 MAC，这里顺手记下来供副标题显示
+            if (XiaomiAdvParser.IsAppleKey(st.Mac))
+            {
+                st.DisplayMac = shadow.Mac;
+                // 合并后的名字（系统名）对不上苹果型号名 → 广播电量归属存疑（克隆帧
+                // 或旁边苹果设备的误认领），按未适配待遇显示（仅整机电量）
+                if (!XiaomiAdvParser.IsAppleProfileName(st.Name))
+                    st.CloneSuspect = true;
+            }
             if (ReferenceEquals(st, _active))
             {
                 DeviceNameText.Text = st.Name;
+                MacText.Text = MacSubtitle(st);
+                UnadaptedHint.Visibility = st.CloneSuspect || !st.IsAdapted
+                    ? Visibility.Visible : Visibility.Collapsed;
                 Dispatcher.BeginInvoke(UpdateDeviceNameMarquee, DispatcherPriority.Render);
             }
             _onActiveDeviceName?.Invoke(u.Mac, st.Name);
@@ -401,9 +433,13 @@ public partial class MainWindow : Window
         DeviceNameText.Text = st.Name.Length > 0 ? st.Name : L.T("main.identifying");
         Dispatcher.BeginInvoke(UpdateDeviceNameMarquee, DispatcherPriority.Render);
         _onActiveDeviceName?.Invoke(st.Mac, st.Name.Length > 0 ? st.Name : "");
-        // 苹果协议设备是合成 ID（AP+型号），显示出来只是内部标识，藏掉副标题
-        MacText.Text = XiaomiAdvParser.IsAppleKey(st.Mac) ? "" : st.Mac;
-        UnadaptedHint.Visibility = st.IsAdapted ? Visibility.Collapsed : Visibility.Visible;
+        // 苹果协议设备是合成 ID（AP+型号），副标题优先显示连接枚举记下的真实 MAC，
+        // 还没连过就显示「苹果兼容广播」说明，不留空
+        MacText.Text = MacSubtitle(st);
+        // 未适配机型显示提示行（详细解释放在 ToolTip）；
+        // 电量不可信条目（苹果帧归属存疑）同样按未适配文案显示
+        UnadaptedHint.Visibility = !st.IsAdapted || st.CloneSuspect
+            ? Visibility.Visible : Visibility.Collapsed;
         SetRingInstant(LeftRing, st.Left);
         SetRingInstant(RightRing, st.Right);
         SetRingInstant(CaseRing, st.Case);
@@ -411,6 +447,12 @@ public partial class MainWindow : Window
         RefreshStats();
         ProbeSystemBattery();   // 切换设备立即读一次系统电量，不等 15 秒心跳
     }
+
+    /// <summary>副标题：普通设备显示 MAC；苹果合成键设备显示真实 MAC（连接枚举记录）或协议说明。</summary>
+    private static string MacSubtitle(DeviceState st) =>
+        XiaomiAdvParser.IsAppleKey(st.Mac)
+            ? st.DisplayMac.Length > 0 ? st.DisplayMac : L.T("main.appleCompat")
+            : st.Mac;
 
     private static string InCaseText(bool? inCase) => inCase switch
     {
@@ -540,7 +582,10 @@ public partial class MainWindow : Window
             // 离线设备跳过：BTHENUM 属性断连后仍在（旧值会误导），且 SystemBatteryOf
             // 的在线门控也挡住了它；关注设备无论在线与否都读，保持绿字行为不变
             if (!ReferenceEquals(st, _active) && !IsDeviceAlive(st.Mac)) continue;
-            st.SystemBattery = SystemBatteryProbe.GetLevel(st.Mac);
+            // 苹果合成键没有真实 MAC，系统电量探测用连接枚举记录的真实地址
+            var probeMac = XiaomiAdvParser.IsAppleKey(st.Mac) && st.DisplayMac.Length > 0
+                ? st.DisplayMac : st.Mac;
+            st.SystemBattery = SystemBatteryProbe.GetLevel(probeMac);
             _history.RecordSystem(st.Mac, st.SystemBattery);   // 广播停止期间保持历史连续
         }
         RefreshAliveState();   // 重新渲染（alive 状态可能未变，但电量值更新了）
@@ -839,13 +884,18 @@ public partial class MainWindow : Window
         foreach (var k in config.KnownDevices)
         {
             if (string.IsNullOrWhiteSpace(k.Mac) || _devices.ContainsKey(k.Mac)) continue;
-            _devices[k.Mac] = new DeviceState
+            var st = new DeviceState
             {
                 Mac = k.Mac,
                 Name = k.Name ?? "",
                 LastSeen = k.LastSeen == default ? DateTime.MinValue : k.LastSeen,
                 IsAdapted = k.Adapted,
+                DisplayMac = k.DisplayMac ?? "",
+                CloneSuspect = k.CloneSuspect,
             };
+            // 电量不可信条目按未适配待遇走（旧版本只标了 CloneSuspect 没降级的迁移）
+            if (st.CloneSuspect) st.IsAdapted = false;
+            _devices[k.Mac] = st;
             _knownMacs.Add(k.Mac);
         }
         UpdateSwitcherVisibility();
@@ -869,6 +919,8 @@ public partial class MainWindow : Window
                 Name = d.Name,
                 LastSeen = d.LastSeen == DateTime.MinValue ? DateTime.Now : d.LastSeen,
                 Adapted = d.IsAdapted,
+                DisplayMac = d.DisplayMac,
+                CloneSuspect = d.CloneSuspect,
             })
             .ToList();
         _config.KnownDevices = list;
@@ -916,21 +968,45 @@ public partial class MainWindow : Window
             if (!endpoints.Any(ep => ep.Contains(name, StringComparison.OrdinalIgnoreCase)))
                 continue;
             // 已适配设备（广播能解析出显示名）不重复登记（宽匹配，兼容系统名带后缀）；
-            // 但连接心跳必须刷到它头上——连接播放/合盖期间广播停发、LastSeen 停走，
-            // 悬浮条的在线灰显与系统电量兜底全靠 ConnSeen 维持
-            var adapted = _devices.Values.FirstOrDefault(d => d.IsAdapted && d.Name.Length > 0 &&
+            // 电量不可信条目虽按未适配显示，但它是广播条目的本体，连接心跳仍要匹配到它，
+            // 否则会给同一副耳机再建一个条目（悬浮条出现同名两行）
+            var adapted = _devices.Values.FirstOrDefault(d => (d.IsAdapted || d.CloneSuspect) &&
+                                                               d.Name.Length > 0 &&
                                                                NameMatchesProfile(name, d.Name));
             if (adapted is not null)
             {
                 adapted.ConnSeen = DateTime.Now;
+                // 苹果合成键设备记下真实经典蓝牙 MAC（广播 MAC 随机轮换，副标题用它）
+                if (XiaomiAdvParser.IsAppleKey(adapted.Mac) && adapted.DisplayMac != mac)
+                {
+                    adapted.DisplayMac = mac;
+                    PersistKnownDevices();
+                    if (ReferenceEquals(adapted, _active))
+                        MacText.Text = MacSubtitle(adapted);
+                }
+                // 电量不可信检测（补标）：苹果协议广播但系统名对不上苹果型号名。
+                // 这类广播的电量字段无法确认归属与真实性，按未适配待遇显示
+                if (XiaomiAdvParser.IsAppleKey(adapted.Mac) && !adapted.CloneSuspect &&
+                    !XiaomiAdvParser.IsAppleProfileName(adapted.Name))
+                {
+                    adapted.CloneSuspect = true;
+                    adapted.IsAdapted = false;
+                    PersistKnownDevices();
+                    if (ReferenceEquals(adapted, _active))
+                    {
+                        UnadaptedHint.Visibility = Visibility.Visible;
+                        RefreshAliveState();
+                    }
+                }
                 continue;
             }
             if (_devices.TryGetValue(mac, out var st))
             {
                 st.LastSeen = DateTime.Now;   // 已登记的设备：刷新在线心跳
                 st.ConnSeen = DateTime.Now;
-                // 之前按未适配登记的条目，名字对上已知格式就补升级（无需等广播）
-                if (!st.IsAdapted && IsKnownFormatName(name))
+                // 之前按未适配登记的条目，名字对上已知格式就补升级（无需等广播）；
+                // 电量不可信条目不升级
+                if (!st.IsAdapted && !st.CloneSuspect && IsKnownFormatName(name))
                 {
                     st.IsAdapted = true;
                     changed = true;

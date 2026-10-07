@@ -111,9 +111,13 @@ public partial class App : Application
         var lastShowAt = DateTime.Now;   // 启动后第一波广播不弹，等真正"打开耳机"
         _watcher.UpdateReceived += u => Dispatcher.Invoke(() =>
         {
-            _miniBar?.Push(u);
-            // 低电量 / 骤降：全设备监控（每台独立状态、消息带名字），不只关注设备
-            _monitor?.OnUpdate(u);
+            // 低电量 / 骤降：全设备监控（每台独立状态、消息带名字），不只关注设备；
+            // 电量不可信条目（苹果帧归属存疑）不喂监控与悬浮条，防误报
+            if (_window?.IsCloneSuspect(u.Mac) != true)
+            {
+                _miniBar?.Push(u);
+                _monitor?.OnUpdate(u);
+            }
 
             var now = DateTime.Now;
             var quiet = now - lastDataAt > TimeSpan.FromSeconds(30);

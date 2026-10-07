@@ -62,6 +62,12 @@ public static class XiaomiAdvParser
     public static bool IsAppleKey(string productKey) =>
         productKey.StartsWith("AP", StringComparison.Ordinal) && productKey.Length == 6;
 
+    /// <summary>设备名是否可视为真苹果设备（如 "AirPods Pro 3"、"张三的AirPods"——
+    /// iOS 改名默认格式）。克隆苹果帧的杂牌自报名是纯型号名但系统连接名
+    /// （如 "SOAIY GD31"）不含 AirPods 字样，不会被误放行。</summary>
+    public static bool IsAppleProfileName(string name) =>
+        name.Contains("AirPods", StringComparison.OrdinalIgnoreCase);
+
     public static string GetDisplayName(string productKey)
     {
         if (IsAppleKey(productKey) &&

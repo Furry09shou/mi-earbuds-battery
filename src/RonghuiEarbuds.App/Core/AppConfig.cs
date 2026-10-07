@@ -128,6 +128,12 @@ public sealed class KnownDeviceEntry
 
     /// <summary>false = 未适配格式（只有连接状态，无电量数据）。</summary>
     public bool Adapted { get; set; } = true;
+
+    /// <summary>苹果合成键设备的真实经典蓝牙 MAC（连接枚举时记录，用于副标题显示）。</summary>
+    public string DisplayMac { get; set; } = "";
+
+    /// <summary>电量不可信标记：广播电量归属存疑，按未适配待遇显示。</summary>
+    public bool CloneSuspect { get; set; }
 }
 
 public static class AutoStartHelper

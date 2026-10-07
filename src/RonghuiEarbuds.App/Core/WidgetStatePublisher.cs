@@ -66,9 +66,22 @@ public static class WidgetStatePublisher
                     if (File.Exists(FilePath)) File.Replace(tmp, FilePath, null);
                     else File.Move(tmp, FilePath);
                 }
-                catch (Exception ex)
+                catch
                 {
-                    EarbudsWatcher.DiagLog($"小组件状态写入失败: {ex.Message}");
+                    // tmp 偶发被占用（杀软扫描/上次残留锁）时清掉重试一次
+                    try
+                    {
+                        var tmp2 = FilePath + ".tmp";
+                        if (File.Exists(tmp2)) File.Delete(tmp2);
+                        Directory.CreateDirectory(Dir);
+                        File.WriteAllText(tmp2, json);
+                        if (File.Exists(FilePath)) File.Replace(tmp2, FilePath, null);
+                        else File.Move(tmp2, FilePath);
+                    }
+                    catch (Exception ex2)
+                    {
+                        EarbudsWatcher.DiagLog($"小组件状态写入失败: {ex2.Message}");
+                    }
                 }
             });
         }
