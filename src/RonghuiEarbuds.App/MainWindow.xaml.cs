@@ -327,41 +327,44 @@ public partial class MainWindow : Window
         // 同名合并失效，导致同一副耳机出现两个条目、连接条目一直显示「未适配」。
         // 机型识别本就来自广播数据（productKey/型号 ID），与名字无关；
         // 这里在「连接中的未适配条目」唯一时自动视为同一副耳机合并。
-        // 判据从严：条目从未收到过广播、名字对不上任何档案名、且当前正连着（ConnSeen 新鲜）；
+        // 判据从严：①仅苹果协议广播条目参与——只有苹果广播存在「广播自报型号名
+        // ≠ 用户改名」的歧义；小米广播的名字就是档案真名，合并会把旁边连着的
+        // 其他耳机（如索爱）误绑到小米条目上（实测串台）；②条目从未收到过广播、
+        // 名字对不上任何档案名、且当前正连着（ConnSeen 新鲜）；
         // 多于一个候选时不猜（避免把电量错绑到旁边其他耳机）。
-        var renamed = _devices.Values
-            .Where(d => !d.IsAdapted && !ReferenceEquals(d, st) &&
-                        d.BroadcastSeen == DateTime.MinValue &&
-                        d.Name.Length > 0 && !IsKnownFormatName(d.Name) &&
-                        DateTime.Now - d.ConnSeen <= TimeSpan.FromSeconds(15))
-            .ToList();
-        if (renamed.Count == 1)
+        if (XiaomiAdvParser.IsAppleKey(st.Mac))
         {
-            var shadow = renamed[0];
-            st.Name = shadow.Name;   // 采用用户改的名字，与系统蓝牙设置一致，后续连接心跳按名字对上
-            // 合并掉的影子条目带真实经典蓝牙 MAC：苹果合成键设备没有显示价值稳定的
-            // 广播 MAC，这里顺手记下来供副标题显示
-            if (XiaomiAdvParser.IsAppleKey(st.Mac))
+            var renamed = _devices.Values
+                .Where(d => !d.IsAdapted && !ReferenceEquals(d, st) &&
+                            d.BroadcastSeen == DateTime.MinValue &&
+                            d.Name.Length > 0 && !IsKnownFormatName(d.Name) &&
+                            DateTime.Now - d.ConnSeen <= TimeSpan.FromSeconds(15))
+                .ToList();
+            if (renamed.Count == 1)
             {
+                var shadow = renamed[0];
+                st.Name = shadow.Name;   // 采用用户改的名字，与系统蓝牙设置一致，后续连接心跳按名字对上
+                // 合并掉的影子条目带真实经典蓝牙 MAC：苹果合成键设备没有显示价值稳定的
+                // 广播 MAC，这里顺手记下来供副标题显示
                 st.DisplayMac = shadow.Mac;
                 // 合并后的名字（系统名）对不上苹果型号名 → 广播电量归属存疑（克隆帧
                 // 或旁边苹果设备的误认领），按未适配待遇显示（仅整机电量）
                 if (!XiaomiAdvParser.IsAppleProfileName(st.Name))
                     st.CloneSuspect = true;
+                if (ReferenceEquals(st, _active))
+                {
+                    DeviceNameText.Text = st.Name;
+                    MacText.Text = MacSubtitle(st);
+                    UnadaptedHint.Visibility = st.CloneSuspect || !st.IsAdapted
+                        ? Visibility.Visible : Visibility.Collapsed;
+                    Dispatcher.BeginInvoke(UpdateDeviceNameMarquee, DispatcherPriority.Render);
+                }
+                _onActiveDeviceName?.Invoke(u.Mac, st.Name);
+                _devices.Remove(shadow.Mac);
+                _knownMacs.Remove(shadow.Mac);
+                if (ReferenceEquals(shadow, _active)) _active = null;
+                merged = true;
             }
-            if (ReferenceEquals(st, _active))
-            {
-                DeviceNameText.Text = st.Name;
-                MacText.Text = MacSubtitle(st);
-                UnadaptedHint.Visibility = st.CloneSuspect || !st.IsAdapted
-                    ? Visibility.Visible : Visibility.Collapsed;
-                Dispatcher.BeginInvoke(UpdateDeviceNameMarquee, DispatcherPriority.Render);
-            }
-            _onActiveDeviceName?.Invoke(u.Mac, st.Name);
-            _devices.Remove(shadow.Mac);
-            _knownMacs.Remove(shadow.Mac);
-            if (ReferenceEquals(shadow, _active)) _active = null;
-            merged = true;
         }
 
         if (isNew || merged || upgraded)
@@ -589,6 +592,22 @@ public partial class MainWindow : Window
             _history.RecordSystem(st.Mac, st.SystemBattery);   // 广播停止期间保持历史连续
         }
         RefreshAliveState();   // 重新渲染（alive 状态可能未变，但电量值更新了）
+    }
+
+    /// <summary>
+    /// 手动刷新按钮：立即重查连接设备与系统整机电量，不必等 5s/15s 心跳。
+    /// 与心跳同一套调用（UI 线程同步执行，Win32 枚举耗时几十毫秒）；
+    /// 广播数据是被动监听，无法手动触发，按钮只加速「连接状态 + 系统电量」两路。
+    /// </summary>
+    private void ManualRefreshButton_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshConnectedAudio();
+        ProbeSystemBattery();
+        // 图标转一圈作为执行反馈
+        RefreshSpin.BeginAnimation(RotateTransform.AngleProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(
+                0, 360, TimeSpan.FromMilliseconds(550))
+            { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
     }
 
     /// <summary>

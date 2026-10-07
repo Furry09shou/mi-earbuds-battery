@@ -149,11 +149,12 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <Ellipse x:Name="LiveDot" Width="8" Height="8" VerticalAlignment="Center"
-                                     Fill="{DynamicResource T.Good}"/>
+                                     Fill="{DynamicResource T.Good}" Margin="0,0,8,0"/>
                             <Button x:Name="DeviceSwitchButton" Grid.Column="1" Visibility="Collapsed"
-                                    VerticalAlignment="Center" Margin="2,0,9,0" Cursor="Hand"
+                                    VerticalAlignment="Center" Margin="-6,0,3,0" Cursor="Hand"
                                     Click="DeviceSwitchButton_Click" ToolTip="切换显示的耳机">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
@@ -184,6 +185,30 @@
                                     </TextBlock>
                                 </Canvas>
                             </Grid>
+                            <!-- 手动刷新：立即重查连接状态与系统整机电量（广播是被动监听无法手动触发） -->
+                            <Button x:Name="ManualRefreshButton" Grid.Column="3" VerticalAlignment="Center"
+                                    Cursor="Hand" ToolTip="立即刷新连接状态与系统电量" Click="ManualRefreshButton_Click"
+                                    RenderTransformOrigin="0.5,0.5">
+                                <Button.RenderTransform>
+                                    <RotateTransform x:Name="RefreshSpin" Angle="0"/>
+                                </Button.RenderTransform>
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Row" Background="Transparent" CornerRadius="6"
+                                                Padding="5,2">
+                                            <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets"
+                                                       FontSize="11" Foreground="{DynamicResource T.TextSecondary}"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Row" Property="Background"
+                                                        Value="{DynamicResource T.HoverBg}"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource T.TextPrimary}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
                         </Grid>
                         <TextBlock x:Name="StateText" Margin="16,4,0,0" FontSize="11.5"
                                    Foreground="{DynamicResource T.TextSecondary}" Text="请打开充电仓盖"/>
